@@ -6,6 +6,7 @@ import { readyPeople as loadReady } from "./repo.js";
 import { publish } from "./events.js";
 import { chat, chatJSON, type ChatMessage } from "./llm.js";
 import type { Analysis } from "./analyze.js";
+import { finalizeLine, planTurn, turnInstruction } from "./turns.js";
 
 export interface Person {
   id: number;
@@ -125,7 +126,7 @@ Their voice: tone=${v.tone}; vocabulary=${v.vocabulary}; emoji use=${v.emoji_use
 Your private intent (never reveal it as a list): ${JSON.stringify(intent)}
 Setting: ${setting.activity} at ${setting.venue}. ${setting.scene}
 
-Rules: stay in character; 1-3 sentences per turn; natural spoken/texting tone; ask questions and react to what ${other.name} just said; probe needs and dealbreakers; reference real details from your own profile; no generic small talk; never invent facts about ${me.name}. Occasionally (not every turn) include a short scene action in *italics*, e.g. *orders the spicy ramen*. Output only your next line.`;
+Rules: stay in character as a real person on a real date; probe needs and dealbreakers over time, but through natural conversation; reference real details from your own profile only when they come up; never invent facts about ${me.name}. Output only your next line, no speaker label.`;
 }
 
 function turnMessages(transcript: { speaker: number; text: string }[], meId: number): ChatMessage[] {
@@ -133,9 +134,6 @@ function turnMessages(transcript: { speaker: number; text: string }[], meId: num
   for (const t of transcript) msgs.push({ role: t.speaker === meId ? "assistant" : "user", content: t.text });
   return msgs;
 }
-
-const cleanLine = (s: string, name: string) =>
-  s.trim().replace(new RegExp(`^\\**${name.split(" ")[0]}\\**\\s*:\\s*`, "i"), "").replace(/^"(.*)"$/s, "$1").trim();
 
 async function makeVerdict(me: Person, other: Person, transcript: { speaker: number; text: string }[], setting: z.output<typeof settingSchema>) {
   const text = transcript.map((t) => `${t.speaker === me.id ? me.name : other.name}: ${t.text}`).join("\n");
@@ -165,10 +163,14 @@ async function runDate(dateId: number, a: Person, b: Person, pre: number) {
 
     const transcript: { speaker: number; text: string }[] = [];
     const sys = { [a.id]: systemFor(a, b, intentA, setting), [b.id]: systemFor(b, a, intentB, setting) };
+    let prevShape: string | undefined;
     for (let i = 0; i < config.dateTurns; i++) {
       const [me, other] = i % 2 === 0 ? [a, b] : [b, a];
-      const raw = await chat(config.models.date, [{ role: "system", content: sys[me.id] }, ...turnMessages(transcript, me.id)], { label: `turn${i}`, maxTokens: 200, temperature: 0.9 });
-      const text = cleanLine(raw, me.name);
+      const plan = planTurn(dateId, i, config.dateTurns, prevShape);
+      prevShape = plan.shape.key;
+      const system = `${sys[me.id]}\n\n${turnInstruction(plan, other.name)}`;
+      const raw = await chat(config.models.date, [{ role: "system", content: system }, ...turnMessages(transcript, me.id)], { label: `turn${i}:${plan.shape.key}`, maxTokens: plan.shape.maxTokens, temperature: 0.95 });
+      const text = finalizeLine(raw, me.name, plan);
       transcript.push({ speaker: me.id, text });
       await query(`insert into date_turns (date_id, idx, speaker_id, text) values ($1,$2,$3,$4)`, [dateId, i, me.id, text]);
       publish({ type: "turn", dateId, idx: i, speakerId: me.id, text });
