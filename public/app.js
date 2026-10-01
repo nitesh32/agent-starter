@@ -6,19 +6,20 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const api = async (url, opts = {}) => {
-    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, ...opts });
+    const headers = opts.body ? { "Content-Type": "application/json" } : {};
+    const res = await fetch(url, { method: "POST", headers, ...opts });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || res.statusText);
     return data;
   };
 
   // ---- shared pieces ----
-  function avatar(id, cls = "sm") {
+  // Mirrors avatar() in src/views/ui.ts (Basecoat avatar).
+  function avatar(id, size = "md") {
     const p = (window.PEOPLE || {})[id] || { name: "?", photo: false };
-    if (p.photo) return `<img class="avatar ${cls}" src="/photo/${id}" alt="" width="48" height="48" decoding="async" referrerpolicy="no-referrer">`;
-    const hue = (id * 47) % 360;
     const ini = p.name.replace(/^@/, "").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
-    return `<span class="avatar ${cls}" aria-hidden="true" style="--h:${hue}">${esc(ini)}</span>`;
+    const img = p.photo ? `<img src="/photo/${id}" alt="" width="48" height="48" decoding="async" referrerpolicy="no-referrer">` : "";
+    return `<span class="avatar" data-size="${size}">${img}<span>${esc(ini)}</span></span>`;
   }
   function bubble(speakerId, text, side) {
     const p = (window.PEOPLE || {})[speakerId] || { name: "?" };
@@ -33,6 +34,10 @@
     el.querySelector(".bubble").innerHTML += '<div class="typing"><i></i><i></i><i></i></div>';
     return el;
   }
+  const toast = (category, title, description) => {
+    const t = document.getElementById("toaster");
+    if (t && t.toast) t.toast({ category, title, description });
+  };
   function setBusy(btn, busy, label) {
     btn.disabled = busy;
     btn.setAttribute("aria-busy", String(busy));
@@ -52,9 +57,11 @@
       try {
         const { scheduled } = await api("/api/dates/run");
         btn.lastChild.textContent = scheduled ? `Started ${scheduled} dates` : "No new dates to run";
+        toast(scheduled ? "success" : "info", scheduled ? `Started ${scheduled} dates` : "Nothing to run", scheduled ? "Opening the live floor." : "Every pairing has already been dated.");
         if (scheduled && page !== "live") setTimeout(() => (location.href = "/live"), 900);
       } catch (err) {
         btn.lastChild.textContent = "Couldn't start. Try again";
+        toast("error", "Couldn't start the dating round", err.message);
       } finally {
         setTimeout(() => setBusy(btn, false, label), 2500);
       }
@@ -70,23 +77,22 @@
         e.preventDefault();
         const btn = form.querySelector("button");
         form.querySelectorAll("input").forEach((i) => i.removeAttribute("aria-invalid"));
-        msg.className = "formmsg";
         msg.textContent = "";
         const empty = [...form.querySelectorAll("input")].find((i) => !i.value.trim());
         if (empty) {
           empty.setAttribute("aria-invalid", "true");
           empty.focus();
-          msg.className = "formmsg err";
           msg.textContent = "Please fill in both fields.";
           return;
         }
         setBusy(btn, true, "Creating agent…");
         try {
           const { id } = await api("/api/people", { body: JSON.stringify(Object.fromEntries(new FormData(form))) });
-          location.href = `/person/${id}`;
+          toast("success", "Agent created", "Reading their profiles now.");
+          setTimeout(() => (location.href = `/person/${id}`), 700);
         } catch (err) {
-          msg.className = "formmsg err";
           msg.textContent = err.message;
+          toast("error", "Couldn't create the agent", err.message);
           setBusy(btn, false, "Create agent");
         }
       };
@@ -96,7 +102,7 @@
         const card = $(`[data-person="${e.id}"]`);
         if (!card) return location.reload();
         const b = $("[data-status]", card);
-        if (b) { b.className = `badge b-${e.status}`; b.textContent = e.status[0].toUpperCase() + e.status.slice(1); }
+        if (b) { b.className = `badge status s-${e.status}`; b.textContent = e.status[0].toUpperCase() + e.status.slice(1); }
         if (e.status === "ready" || e.status === "failed") { clearTimeout(t); t = setTimeout(() => location.reload(), 500); }
       });
     },
@@ -161,11 +167,11 @@
             people.forEach((p) => (window.PEOPLE[p.id] = { name: p.name, photo: p.has_photo }));
           }
           const card = document.createElement("li");
-          card.className = "card livecard";
+          card.className = "card";
           card.dataset.date = e.dateId;
           card.dataset.a = e.aId;
-          card.innerHTML = `<div class="row spread"><div class="row">${avatar(e.aId)}<span class="accent">${window.ICONS.heart}</span>${avatar(e.bId)}</div><span class="badge b-dating" data-status>On a date</span></div>
-            <a href="/date/${e.dateId}"><b>${esc(names(e.aId))} and ${esc(names(e.bId))}</b></a><div class="chat" role="log" aria-live="polite"></div>`;
+          card.innerHTML = `<section class="grid gap-2"><div class="flex items-center justify-between"><div class="flex items-center gap-2">${avatar(e.aId)}<span class="text-primary">${window.ICONS.heart}</span>${avatar(e.bId)}</div><span class="badge status s-dating" data-status>On a date</span></div>
+            <a class="font-medium hover:underline" href="/date/${e.dateId}">${esc(names(e.aId))} and ${esc(names(e.bId))}</a><div class="chat" role="log" aria-live="polite"></div></section>`;
           floor.prepend(card);
           empty.hidden = true;
         } else if (e.type === "turn") {
@@ -178,7 +184,7 @@
           const card = $(`[data-date="${e.dateId}"]`);
           if (!card) return;
           const b = $("[data-status]", card);
-          b.className = `badge ${e.failed ? "b-failed" : "b-done"}`;
+          b.className = `badge status ${e.failed ? "s-failed" : "s-done"}`;
           b.textContent = e.failed ? "Failed" : `Match ${Math.round(e.matchScore)}${e.mutual ? " · mutual" : ""}`;
         }
       });
