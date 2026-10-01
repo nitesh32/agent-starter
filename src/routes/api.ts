@@ -49,6 +49,8 @@ export async function apiRoutes(app: FastifyInstance) {
   app.get("/photo/:id", async (req, reply) => {
     const photo = await repo.getPhoto(idParam(req.params));
     if (!photo) return reply.code(404).send();
-    return reply.header("Cache-Control", "public, max-age=86400").type(photo.photo_type).send(photo.photo_blob);
+    reply.header("Cache-Control", "public, max-age=604800, stale-while-revalidate=86400").header("ETag", photo.etag);
+    if (req.headers["if-none-match"] === photo.etag) return reply.code(304).send();
+    return reply.type(photo.type).send(photo.data);
   });
 }

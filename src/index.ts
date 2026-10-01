@@ -4,7 +4,7 @@ import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import { config } from "./config.js";
 import { migrate } from "./db.js";
-import { queuePerson } from "./pipeline.js";
+import { optimizeStoredPhotos, queuePerson } from "./pipeline.js";
 import { resumeInterrupted } from "./dating.js";
 import { query } from "./db.js";
 import { notFoundPage } from "./views/ui.js";
@@ -36,4 +36,5 @@ await app.listen({ port: config.port, host: "0.0.0.0" });
 // Resume work interrupted by a restart (Render free tier sleeps/restarts).
 const pending = await query<{ id: number }>(`select id from people where status in ('queued','scraping','analyzing')`);
 pending.forEach((p) => void queuePerson(p.id));
+optimizeStoredPhotos().catch((e) => app.log.error(e, "photo optimize failed"));
 resumeInterrupted().catch((e) => app.log.error(e, "resume failed"));

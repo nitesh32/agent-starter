@@ -1,4 +1,5 @@
 // Read-side data access. Routes call these; views never touch the DB.
+import { createHash } from "node:crypto";
 import { query } from "./db.js";
 
 const PUBLIC = `id, name, linkedin_url, instagram_url, ig_username, status, progress, error, tags, analysis, linkedin, instagram,
@@ -8,8 +9,20 @@ export const listPeople = () => query(`select ${PUBLIC} from people order by id 
 
 export const getPerson = async (id: number) => (await query(`select ${PUBLIC} from people where id=$1`, [id]))[0];
 
-export const getPhoto = async (id: number) =>
-  (await query<{ photo_blob: Buffer; photo_type: string }>(`select photo_blob, photo_type from people where id=$1 and photo_blob is not null`, [id]))[0];
+export interface Photo { data: Buffer; type: string; etag: string }
+const photoCache = new Map<number, Photo>();
+
+/** Photos are tiny (resized at ingest) and immutable per person, so keep them in memory. */
+export async function getPhoto(id: number): Promise<Photo | undefined> {
+  const hit = photoCache.get(id);
+  if (hit) return hit;
+  const row = (await query<{ photo_blob: Buffer; photo_type: string }>(`select photo_blob, photo_type from people where id=$1 and photo_blob is not null`, [id]))[0];
+  if (!row) return undefined;
+  const photo = { data: row.photo_blob, type: row.photo_type, etag: `"${createHash("md5").update(row.photo_blob).digest("hex")}"` };
+  photoCache.set(id, photo);
+  return photo;
+}
+export const dropCachedPhoto = (id: number) => photoCache.delete(id);
 
 export const readyPeople = () =>
   query(`select id, name, tags, analysis, linkedin, instagram from people where status='ready' and analysis is not null order by id`);

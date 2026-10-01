@@ -3,7 +3,8 @@ import { config } from "./config.js";
 import { query } from "./db.js";
 import { publish } from "./events.js";
 import { analyze } from "./analyze.js";
-import { fetchPhoto, normalizeIgUsername, normalizeLinkedInUrl, scrapePerson, type Progress } from "./scrape.js";
+import { dropCachedPhoto } from "./repo.js";
+import { fetchPhoto, optimizePhoto, normalizeIgUsername, normalizeLinkedInUrl, scrapePerson, type Progress } from "./scrape.js";
 import { runDatesFor } from "./dating.js";
 
 const personQueue = pLimit(config.concurrency);
@@ -70,4 +71,19 @@ export async function processPerson(id: number): Promise<void> {
     return;
   }
   runDatesFor(id).catch((e) => console.error(`[person ${id}] dating failed:`, e));
+}
+
+/** One-time cleanup: shrink photos stored before resizing existed. No-op once everything is small. */
+export async function optimizeStoredPhotos() {
+  const big = await query<{ id: number; photo_blob: Buffer }>(`select id, photo_blob from people where photo_blob is not null and (photo_type <> 'image/webp' or length(photo_blob) > 60000)`);
+  for (const row of big) {
+    try {
+      const { data, type } = await optimizePhoto(row.photo_blob);
+      await query(`update people set photo_blob=$2, photo_type=$3 where id=$1`, [row.id, data, type]);
+      dropCachedPhoto(row.id);
+    } catch (e) {
+      console.warn(`[photo ${row.id}] could not optimize:`, (e as Error).message);
+    }
+  }
+  if (big.length) console.log(`[photo] optimized ${big.length} stored photos`);
 }

@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { config } from "./config.js";
 import { runActor } from "./apify.js";
 
@@ -174,14 +175,20 @@ export async function scrapePerson(
   return { linkedin: l.value, instagram: i.value };
 }
 
+const PHOTO_PX = 256; // 2x the largest avatar we render (96px xl) for retina screens
+
+/** Downscale to a small square WebP: typically 5-15KB instead of hundreds of KB. */
+export async function optimizePhoto(input: Buffer): Promise<{ data: Buffer; type: string }> {
+  const data = await sharp(input).rotate().resize(PHOTO_PX, PHOTO_PX, { fit: "cover", position: "attention" }).webp({ quality: 80 }).toBuffer();
+  return { data, type: "image/webp" };
+}
+
 export async function fetchPhoto(url: string): Promise<{ data: Buffer; type: string } | null> {
   if (!url) return null;
   try {
     const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(15_000) });
-    const type = res.headers.get("content-type") ?? "";
-    if (!res.ok || !type.startsWith("image/")) return null;
-    const data = Buffer.from(await res.arrayBuffer());
-    return data.length < 3_000_000 ? { data, type } : null;
+    if (!res.ok || !(res.headers.get("content-type") ?? "").startsWith("image/")) return null;
+    return await optimizePhoto(Buffer.from(await res.arrayBuffer()));
   } catch {
     return null;
   }
