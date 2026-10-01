@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: agentdate
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - { key: NODE_VERSION, value: "20" }
+      - { key: APIFY_TOKEN, sync: false }
+      - { key: DATABASE_URL, sync: false }
+      - { key: OPENROUTER_API_KEY, sync: false }
+      - { key: APP_URL, sync: false }
+      - { key: APIFY_IG_ACTOR, value: apify/instagram-profile-scraper }
+      - { key: APIFY_LINKEDIN_ACTOR, value: harvestapi/linkedin-profile-scraper }
+      - { key: OPENROUTER_MODEL_ANALYSIS, value: anthropic/claude-sonnet-4.5 }
+      - { key: OPENROUTER_MODEL_DATE, value: google/gemini-2.5-flash }
+      - { key: OPENROUTER_MODEL_FALLBACK, value: openai/gpt-4.1-mini }
+      - { key: DATES_PER_PERSON, value: "5" }
+      - { key: DATE_TURNS, value: "8" }
+      - { key: CONCURRENCY, value: "4" }
