@@ -17,4 +17,5 @@ export const config = {
   datesPerPerson: num("DATES_PER_PERSON", 5),
   dateTurns: num("DATE_TURNS", 8),
   concurrency: num("CONCURRENCY", 4),
+  scrapeConcurrency: num("SCRAPE_CONCURRENCY", 2), // each person runs 2 scrapers at once
 };

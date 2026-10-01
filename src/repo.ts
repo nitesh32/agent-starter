@@ -23,8 +23,13 @@ export const topPairs = (limit = 5) =>
     [limit],
   );
 
-export const findByLinkedIn = async (url: string) =>
-  (await query<{ id: number; status: string }>(`select id, status from people where linkedin_url=$1`, [url]))[0];
+/** An existing person with the same LinkedIn profile OR the same Instagram account (case-insensitive). */
+export const findExisting = async (linkedinUrl: string, igUsername: string) =>
+  (await query<{ id: number; name: string; status: string }>(
+    `select id, name, status from people where lower(linkedin_url)=lower($1) or lower(ig_username)=lower($2)
+      order by (status <> 'failed') desc, id limit 1`,
+    [linkedinUrl, igUsername],
+  ))[0];
 
 export const countReadyPeople = async () =>
   Number((await query<{ n: string }>(`select count(*) n from people where status='ready'`))[0].n);

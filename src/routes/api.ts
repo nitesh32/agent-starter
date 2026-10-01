@@ -1,9 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { createPerson, queuePerson, updateLinks } from "../pipeline.js";
+import { addPerson, queuePerson, updateLinks } from "../pipeline.js";
 import { runRound } from "../dating.js";
 import * as repo from "../repo.js";
-import { normalizeLinkedInUrl } from "../scrape.js";
 import { seedFromCsv } from "../seed.js";
 import path from "node:path";
 
@@ -17,9 +16,7 @@ export async function apiRoutes(app: FastifyInstance) {
     const body = newPerson.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "linkedin_url and instagram_url are required" });
     try {
-      const existing = await repo.findByLinkedIn(normalizeLinkedInUrl(body.data.linkedin_url));
-      const id = await createPerson(body.data.linkedin_url, body.data.instagram_url);
-      return { id, existing: !!existing && existing.status !== "failed" };
+      return await addPerson(body.data.linkedin_url, body.data.instagram_url);
     } catch (e) {
       return reply.code(400).send({ error: (e as Error).message });
     }

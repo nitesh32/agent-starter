@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { parse } from "csv-parse/sync";
-import { createPerson } from "./pipeline.js";
+import { addPerson } from "./pipeline.js";
 
 export interface SeedRow { name?: string; linkedin_url: string; instagram_url: string }
 
@@ -9,16 +9,19 @@ export async function readSeedCsv(path: string): Promise<SeedRow[]> {
   return rows.filter((r) => r.linkedin_url && r.instagram_url);
 }
 
-/** Registers every row (invalid rows are reported, not fatal). Processing runs through the pipeline queue. */
+/** Registers every row. Profiles already on the site (same LinkedIn or Instagram) are skipped, not reprocessed. */
 export async function seedFromCsv(path: string) {
-  const ids: number[] = [];
+  const added: string[] = [];
+  const skipped: string[] = [];
   const errors: string[] = [];
   for (const row of await readSeedCsv(path)) {
+    const label = row.name || row.linkedin_url;
     try {
-      ids.push(await createPerson(row.linkedin_url, row.instagram_url));
+      const r = await addPerson(row.linkedin_url, row.instagram_url);
+      (r.existing ? skipped : added).push(label);
     } catch (e) {
-      errors.push(`${row.linkedin_url}: ${(e as Error).message}`);
+      errors.push(`${label}: ${(e as Error).message}`);
     }
   }
-  return { ids, errors };
+  return { added, skipped, errors };
 }

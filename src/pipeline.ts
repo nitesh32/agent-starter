@@ -3,11 +3,12 @@ import { config } from "./config.js";
 import { query } from "./db.js";
 import { publish } from "./events.js";
 import { analyze } from "./analyze.js";
+import * as repo from "./repo.js";
 import { dropCachedPhoto } from "./repo.js";
 import { fetchPhoto, optimizePhoto, normalizeIgUsername, normalizeLinkedInUrl, scrapePerson, type Progress } from "./scrape.js";
 import { runDatesFor } from "./dating.js";
 
-const personQueue = pLimit(config.concurrency);
+const personQueue = pLimit(config.scrapeConcurrency);
 
 async function setStatus(id: number, status: string, error: string | null = null, progress?: Progress) {
   const rows = await query(
@@ -17,24 +18,34 @@ async function setStatus(id: number, status: string, error: string | null = null
   publish({ type: "person", id, status, progress, name: rows[0]?.name });
 }
 
-export async function createPerson(linkedinInput: string, instagramInput: string): Promise<number> {
+export interface CreateResult { id: number; existing: boolean }
+
+/**
+ * Registers a person and queues processing, unless the same LinkedIn or Instagram is already on the site:
+ * then the existing person is returned untouched (no scraping, no model calls). A previously failed
+ * person is retried with the new links.
+ */
+export async function addPerson(linkedinInput: string, instagramInput: string): Promise<CreateResult> {
   const linkedin = normalizeLinkedInUrl(linkedinInput);
   const username = normalizeIgUsername(instagramInput);
-  const existing = await query(`select id, status from people where linkedin_url=$1`, [linkedin]);
-  if (existing[0] && existing[0].status !== "failed") return existing[0].id;
-  if (existing[0]) {
-    await query(`update people set instagram_url=$2, ig_username=$3, status='queued', error=null where id=$1`, [existing[0].id, `https://www.instagram.com/${username}/`, username]);
-    queuePerson(existing[0].id);
-    return existing[0].id;
+  const instagram = `https://www.instagram.com/${username}/`;
+  const found = await repo.findExisting(linkedin, username);
+  if (found && found.status !== "failed") return { id: found.id, existing: true };
+  if (found) {
+    await query(`update people set linkedin_url=$2, instagram_url=$3, ig_username=$4, status='queued', error=null, linkedin=null, instagram=null, analysis=null where id=$1`, [found.id, linkedin, instagram, username]);
+    void queuePerson(found.id);
+    return { id: found.id, existing: false };
   }
   const rows = await query(
     `insert into people (name, linkedin_url, instagram_url, ig_username) values ($1,$2,$3,$4) returning id`,
-    [`@${username}`, linkedin, `https://www.instagram.com/${username}/`, username],
+    [`@${username}`, linkedin, instagram, username],
   );
   publish({ type: "person", id: rows[0].id, status: "queued", name: `@${username}` });
-  queuePerson(rows[0].id);
-  return rows[0].id;
+  void queuePerson(rows[0].id);
+  return { id: rows[0].id, existing: false };
 }
+
+export const createPerson = async (linkedinInput: string, instagramInput: string) => (await addPerson(linkedinInput, instagramInput)).id;
 
 /** Replace a person's links (e.g. after a typo) and run the pipeline again. */
 export async function updateLinks(id: number, linkedinInput: string, instagramInput: string): Promise<void> {
@@ -43,7 +54,7 @@ export async function updateLinks(id: number, linkedinInput: string, instagramIn
   const clash = await query(`select id, name from people where linkedin_url=$1 and id<>$2`, [linkedin, id]);
   if (clash[0]) throw new Error(`That LinkedIn profile is already on AgentDate (${clash[0].name}).`);
   const rows = await query(
-    `update people set linkedin_url=$2, instagram_url=$3, ig_username=$4, name=$5, status='queued', error=null, progress='{}'::jsonb where id=$1 returning id`,
+    `update people set linkedin_url=$2, instagram_url=$3, ig_username=$4, name=$5, status='queued', error=null, progress='{}'::jsonb, linkedin=null, instagram=null, analysis=null where id=$1 returning id`,
     [id, linkedin, `https://www.instagram.com/${username}/`, username, `@${username}`],
   );
   if (!rows[0]) throw new Error("Person not found.");
@@ -61,20 +72,23 @@ export async function processPerson(id: number): Promise<void> {
     const [p] = await query(`select * from people where id=$1`, [id]);
     if (!p) return;
 
-    await setStatus(id, "scraping", null, { linkedin: "running", instagram: "running" });
-    const scraped = await scrapePerson(p.linkedin_url, p.ig_username, (progress) => {
-      query(`update people set progress=$2::jsonb where id=$1`, [id, JSON.stringify(progress)]).catch(() => {});
-      publish({ type: "person", id, status: "scraping", progress });
-    });
-    const li = scraped.linkedin.norm;
-    const ig = scraped.instagram.norm;
-    const photo = (await fetchPhoto(li.profilePic)) ?? (await fetchPhoto(ig.profilePic));
-    await query(
-      `update people set name=$2, photo_url=$3, photo_blob=$4, photo_type=$5,
-         raw_linkedin=$6, raw_instagram=$7, linkedin=$8, instagram=$9 where id=$1`,
-      [id, li.name || ig.fullName || `@${ig.username}`, li.profilePic || ig.profilePic, photo?.data ?? null, photo?.type ?? null,
-       JSON.stringify(scraped.linkedin.raw), JSON.stringify(scraped.instagram.raw), JSON.stringify(li), JSON.stringify(ig)],
-    );
+    let li = p.linkedin, ig = p.instagram;
+    if (!(li && ig)) {
+      await setStatus(id, "scraping", null, { linkedin: "running", instagram: "running" });
+      const scraped = await scrapePerson(p.linkedin_url, p.ig_username, (progress) => {
+        query(`update people set progress=$2::jsonb where id=$1`, [id, JSON.stringify(progress)]).catch(() => {});
+        publish({ type: "person", id, status: "scraping", progress });
+      });
+      li = scraped.linkedin.norm;
+      ig = scraped.instagram.norm;
+      const photo = (await fetchPhoto(li.profilePic)) ?? (await fetchPhoto(ig.profilePic));
+      await query(
+        `update people set name=$2, photo_url=$3, photo_blob=$4, photo_type=$5,
+           raw_linkedin=$6, raw_instagram=$7, linkedin=$8, instagram=$9 where id=$1`,
+        [id, li.name || ig.fullName || `@${ig.username}`, li.profilePic || ig.profilePic, photo?.data ?? null, photo?.type ?? null,
+         JSON.stringify(scraped.linkedin.raw), JSON.stringify(scraped.instagram.raw), JSON.stringify(li), JSON.stringify(ig)],
+      );
+    }
 
     await setStatus(id, "analyzing");
     const analysis = await analyze(li, ig);
