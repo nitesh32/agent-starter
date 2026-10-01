@@ -148,6 +148,10 @@ export async function scrapePerson(
       return fail("linkedin", `We couldn't reach LinkedIn right now (${(e as Error).message}). Try again in a minute.`);
     }
     const raw: any = items[0];
+    if (raw?.error && /limit|upgrade|quota|plan|rent/i.test(String(raw.error))) {
+      console.error(`[linkedin] actor refused the run: ${String(raw.error).slice(0, 200)}`);
+      return fail("linkedin", "The LinkedIn reader has reached its usage limit, so new profiles can't be added right now. Profiles already on the site are unaffected.");
+    }
     const norm = raw && !raw.error ? normLinkedIn(raw) : null;
     if (!norm || (!norm.name && !norm.headline)) {
       return fail("linkedin", "We couldn't find that LinkedIn profile. Check the link and make sure the profile is public.");
