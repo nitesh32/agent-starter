@@ -76,6 +76,7 @@ export function layout(title: string, body: string, active = "", pageAttrs = "",
 <meta name="theme-color" content="#fbf9f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#18161d" media="(prefers-color-scheme: dark)">
 <meta property="og:title" content="${esc(title)} · AgentDate"><meta property="og:description" content="${esc(description)}">
 <link rel="icon" href="${FAVICON}">
+<script type="speculationrules">{"prerender":[{"where":{"href_matches":"/*"},"eagerness":"moderate"}]}</script>
 <script>document.documentElement.classList.toggle("dark",matchMedia("(prefers-color-scheme: dark)").matches)</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">

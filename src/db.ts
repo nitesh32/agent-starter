@@ -4,7 +4,20 @@ import pg from "pg";
 export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
+  max: 10,
+  keepAlive: true,
+  // A new SSL connection to Neon costs ~800ms; keep idle ones around instead of the 10s default.
+  idleTimeoutMillis: 10 * 60_000,
 });
+// An idle connection dropped by the server must not crash the process.
+pool.on("error", (err) => console.warn("[db] idle client error:", err.message));
+
+/** Keeps a few connections open (and Neon's compute awake) so page loads never pay the connect cost. */
+export function startDbKeepAlive(connections = 3, everyMs = 30_000) {
+  const ping = () => Promise.all(Array.from({ length: connections }, () => pool.query("select 1"))).catch(() => {});
+  void ping();
+  setInterval(ping, everyMs).unref();
+}
 
 export async function query<T extends pg.QueryResultRow = any>(
   text: string,

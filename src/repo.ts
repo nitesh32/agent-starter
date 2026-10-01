@@ -5,7 +5,11 @@ import { query } from "./db.js";
 const PUBLIC = `id, name, linkedin_url, instagram_url, ig_username, status, progress, error, tags, analysis, linkedin, instagram,
   (photo_type is not null) as has_photo, analysis->>'headline_tagline' as tagline`;
 
-export const listPeople = () => query(`select ${PUBLIC} from people order by id desc`);
+/** Slim card data for list pages: avoids shipping every person's full analysis JSON over the wire. */
+export const listPeople = () =>
+  query(`select id, name, status, error, (photo_type is not null) as has_photo, analysis->>'headline_tagline' as tagline from people order by id desc`);
+
+export const listPeopleFull = () => query(`select ${PUBLIC} from people order by id desc`);
 
 export const getPerson = async (id: number) => (await query(`select ${PUBLIC} from people where id=$1`, [id]))[0];
 

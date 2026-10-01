@@ -12,9 +12,8 @@ export async function pageRoutes(app: FastifyInstance) {
 
   app.get("/person/:id", async (req, reply) => {
     const id = idParam(req.params);
-    const person = await repo.getPerson(id);
+    const [person, dates, ranking] = await Promise.all([repo.getPerson(id), repo.datesOf(id), repo.rankingOf(id)]);
     if (!person) return reply.code(404).type("text/html").send(notFoundPage("person"));
-    const [dates, ranking] = await Promise.all([repo.datesOf(id), repo.rankingOf(id)]);
     return html(reply, personPage(person, dates, ranking));
   });
 

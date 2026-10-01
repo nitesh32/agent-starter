@@ -3,7 +3,7 @@ import path from "node:path";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import { config } from "./config.js";
-import { migrate } from "./db.js";
+import { migrate, startDbKeepAlive } from "./db.js";
 import { optimizeStoredPhotos, queuePerson } from "./pipeline.js";
 import { resumeInterrupted } from "./dating.js";
 import { query } from "./db.js";
@@ -31,6 +31,7 @@ await app.register(streamRoutes);
 await app.register(pageRoutes);
 
 await migrate();
+startDbKeepAlive();
 await app.listen({ port: config.port, host: "0.0.0.0" });
 
 // Resume work interrupted by a restart (Render free tier sleeps/restarts).
