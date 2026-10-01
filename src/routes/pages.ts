@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { config } from "../config.js";
 import * as repo from "../repo.js";
+import { notFoundPage } from "../views/ui.js";
 import { aboutPage, datePage, homePage, livePage, personPage, rankingsPage } from "../views/pages.js";
 
 const html = (reply: { type: (t: string) => any }, body: string) => reply.type("text/html; charset=utf-8").send(body);
@@ -12,7 +13,7 @@ export async function pageRoutes(app: FastifyInstance) {
   app.get("/person/:id", async (req, reply) => {
     const id = idParam(req.params);
     const person = await repo.getPerson(id);
-    if (!person) return reply.code(404).type("text/html").send("<h1>Not found</h1>");
+    if (!person) return reply.code(404).type("text/html").send(notFoundPage("person"));
     const [dates, ranking] = await Promise.all([repo.datesOf(id), repo.rankingOf(id)]);
     return html(reply, personPage(person, dates, ranking));
   });
@@ -20,7 +21,7 @@ export async function pageRoutes(app: FastifyInstance) {
   app.get("/date/:id", async (req, reply) => {
     const id = idParam(req.params);
     const date = await repo.getDate(id);
-    if (!date) return reply.code(404).type("text/html").send("<h1>Not found</h1>");
+    if (!date) return reply.code(404).type("text/html").send(notFoundPage("date"));
     const [people, turns] = await Promise.all([repo.peopleByIds([date.a_id, date.b_id]), repo.turnsOf(id)]);
     return html(reply, datePage(date, people.get(date.a_id)!, people.get(date.b_id)!, turns));
   });

@@ -7,6 +7,7 @@ import { migrate } from "./db.js";
 import { queuePerson } from "./pipeline.js";
 import { resumeInterrupted } from "./dating.js";
 import { query } from "./db.js";
+import { notFoundPage } from "./views/ui.js";
 import { apiRoutes } from "./routes/api.js";
 import { pageRoutes } from "./routes/pages.js";
 import { streamRoutes } from "./routes/stream.js";
@@ -17,6 +18,12 @@ app.setErrorHandler((err, _req, reply) => {
   app.log.error(err);
   reply.code(500).send({ error: (err as Error).message });
 });
+
+app.addHook("onSend", async (_req, reply) => {
+  reply.header("X-Content-Type-Options", "nosniff").header("Referrer-Policy", "strict-origin-when-cross-origin").header("X-Frame-Options", "DENY");
+});
+
+app.setNotFoundHandler((_req, reply) => reply.code(404).type("text/html; charset=utf-8").send(notFoundPage()));
 
 await app.register(fastifyStatic, { root: path.resolve("public"), maxAge: "10m" });
 await app.register(apiRoutes);

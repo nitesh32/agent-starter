@@ -112,7 +112,7 @@ async function makeSetting(a: Person, b: Person) {
   const shared = a.tags.filter((t) => b.tags.includes(t)).slice(0, 8);
   return chatJSON(config.models.date, [
     { role: "system", content: "You plan realistic, specific first dates." },
-    { role: "user", content: `Pick one concrete first date for these two people, based on shared interests.\nA: ${JSON.stringify(card(a))}\nB: ${JSON.stringify(card(b))}\nShared tags: ${shared.join(", ") || "none"}; A city: ${a.analysis.lifestyle.city}; B city: ${b.analysis.lifestyle.city}.\nReturn JSON {"venue": "...", "activity": "e.g. bouldering then ramen in Bandra", "scene": "one-line scene setting"}.` },
+    { role: "user", content: `Pick one concrete first date for these two people, based on shared interests.\nA: ${JSON.stringify(card(a))}\nB: ${JSON.stringify(card(b))}\nShared tags: ${shared.join(", ") || "none"}; A city: ${a.analysis.lifestyle.city}; B city: ${b.analysis.lifestyle.city}.\nKeep it short and casual: "activity" max 8 words (e.g. "bouldering then ramen in Bandra"), "venue" max 8 words, "scene" one sentence. Return JSON {"venue": "...", "activity": "...", "scene": "..."}.` },
   ], settingSchema, { label: "setting", temperature: 0.9, maxTokens: 300 });
 }
 

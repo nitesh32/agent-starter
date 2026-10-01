@@ -15,10 +15,10 @@
   // ---- shared pieces ----
   function avatar(id, cls = "sm") {
     const p = (window.PEOPLE || {})[id] || { name: "?", photo: false };
-    if (p.photo) return `<img class="avatar ${cls}" src="/photo/${id}" alt="" referrerpolicy="no-referrer">`;
+    if (p.photo) return `<img class="avatar ${cls}" src="/photo/${id}" alt="" width="48" height="48" decoding="async" referrerpolicy="no-referrer">`;
     const hue = (id * 47) % 360;
     const ini = p.name.replace(/^@/, "").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
-    return `<span class="avatar ${cls}" style="background:hsl(${hue} 70% 88%);color:hsl(${hue} 50% 35%)">${esc(ini)}</span>`;
+    return `<span class="avatar ${cls}" aria-hidden="true" style="--h:${hue}">${esc(ini)}</span>`;
   }
   function bubble(speakerId, text, side) {
     const p = (window.PEOPLE || {})[speakerId] || { name: "?" };
@@ -33,6 +33,11 @@
     el.querySelector(".bubble").innerHTML += '<div class="typing"><i></i><i></i><i></i></div>';
     return el;
   }
+  function setBusy(btn, busy, label) {
+    btn.disabled = busy;
+    btn.setAttribute("aria-busy", String(busy));
+    if (label) btn.lastChild.textContent = label;
+  }
   function stream(onEvent) {
     const es = new EventSource("/api/stream");
     es.onmessage = (m) => onEvent(JSON.parse(m.data));
@@ -42,13 +47,16 @@
     const btn = $("#run-round");
     if (!btn) return;
     btn.onclick = async () => {
-      btn.disabled = true;
+      const label = btn.lastChild.textContent;
+      setBusy(btn, true, "Starting…");
       try {
         const { scheduled } = await api("/api/dates/run");
-        btn.textContent = scheduled ? `Started ${scheduled} dates…` : "No new dates to run";
+        btn.lastChild.textContent = scheduled ? `Started ${scheduled} dates` : "No new dates to run";
         if (scheduled && page !== "live") setTimeout(() => (location.href = "/live"), 900);
+      } catch (err) {
+        btn.lastChild.textContent = "Couldn't start. Try again";
       } finally {
-        setTimeout(() => { btn.disabled = false; btn.textContent = "♥ Run dating round"; }, 2500);
+        setTimeout(() => setBusy(btn, false, label), 2500);
       }
     };
   }
@@ -61,16 +69,25 @@
       form.onsubmit = async (e) => {
         e.preventDefault();
         const btn = form.querySelector("button");
-        btn.disabled = true;
-        msg.className = "msgline";
-        msg.textContent = "Creating agent…";
+        form.querySelectorAll("input").forEach((i) => i.removeAttribute("aria-invalid"));
+        msg.className = "formmsg";
+        msg.textContent = "";
+        const empty = [...form.querySelectorAll("input")].find((i) => !i.value.trim());
+        if (empty) {
+          empty.setAttribute("aria-invalid", "true");
+          empty.focus();
+          msg.className = "formmsg err";
+          msg.textContent = "Please fill in both fields.";
+          return;
+        }
+        setBusy(btn, true, "Creating agent…");
         try {
           const { id } = await api("/api/people", { body: JSON.stringify(Object.fromEntries(new FormData(form))) });
           location.href = `/person/${id}`;
         } catch (err) {
-          msg.className = "msgline err";
+          msg.className = "formmsg err";
           msg.textContent = err.message;
-          btn.disabled = false;
+          setBusy(btn, false, "Create agent");
         }
       };
       let t;
@@ -106,6 +123,7 @@
       $("#replay").onclick = async (ev) => {
         const btn = ev.currentTarget;
         btn.disabled = true;
+        chat.setAttribute("aria-live", "off");
         const saved = [...chat.children];
         chat.innerHTML = "";
         for (const el of saved) {
@@ -117,12 +135,14 @@
           el.style.animation = "none"; void el.offsetWidth; el.style.animation = "";
         }
         btn.disabled = false;
+        chat.setAttribute("aria-live", "off");
       };
 
       if (status === "done" || status === "failed") return;
       stream((e) => {
         if (e.dateId !== Number(id)) return;
         if (e.type === "turn") {
+          $("#chat-wait")?.remove();
           chat.appendChild(bubble(e.speakerId, e.text, side(e.speakerId)));
           $("#replay").disabled = false;
         } else if (e.type === "date_finished") setTimeout(() => location.reload(), 600);
@@ -140,12 +160,12 @@
             const people = await Promise.all([e.aId, e.bId].map((i) => fetch(`/api/people/${i}`).then((r) => r.json())));
             people.forEach((p) => (window.PEOPLE[p.id] = { name: p.name, photo: p.has_photo }));
           }
-          const card = document.createElement("div");
+          const card = document.createElement("li");
           card.className = "card livecard";
           card.dataset.date = e.dateId;
           card.dataset.a = e.aId;
-          card.innerHTML = `<div class="row spread" style="margin-bottom:10px"><div class="row">${avatar(e.aId)}<span class="grad">♥</span>${avatar(e.bId)}</div><span class="badge b-dating" data-status>On a date</span></div>
-            <a href="/date/${e.dateId}"><b>${esc(names(e.aId))} &amp; ${esc(names(e.bId))}</b></a><div class="chat" style="margin-top:8px"></div>`;
+          card.innerHTML = `<div class="row spread"><div class="row">${avatar(e.aId)}<span class="accent">${window.ICONS.heart}</span>${avatar(e.bId)}</div><span class="badge b-dating" data-status>On a date</span></div>
+            <a href="/date/${e.dateId}"><b>${esc(names(e.aId))} and ${esc(names(e.bId))}</b></a><div class="chat" role="log" aria-live="polite"></div>`;
           floor.prepend(card);
           empty.hidden = true;
         } else if (e.type === "turn") {
@@ -159,7 +179,7 @@
           if (!card) return;
           const b = $("[data-status]", card);
           b.className = `badge ${e.failed ? "b-failed" : "b-done"}`;
-          b.textContent = e.failed ? "Failed" : `Match ${Math.round(e.matchScore)}${e.mutual ? " ♥" : ""}`;
+          b.textContent = e.failed ? "Failed" : `Match ${Math.round(e.matchScore)}${e.mutual ? " · mutual" : ""}`;
         }
       });
     },
