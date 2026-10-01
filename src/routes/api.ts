@@ -2,8 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { createPerson, queuePerson, updateLinks } from "../pipeline.js";
 import { runRound } from "../dating.js";
-import { seedFromCsv } from "../seed.js";
 import * as repo from "../repo.js";
+import { seedFromCsv } from "../seed.js";
 import path from "node:path";
 
 const newPerson = z.object({ linkedin_url: z.string().min(3), instagram_url: z.string().min(1) });
@@ -39,12 +39,16 @@ export async function apiRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post("/api/people/:id/retry", async (req) => {
-    void queuePerson(idParam(req.params));
+  app.post("/api/people/:id/retry", async (req, reply) => {
+    const id = idParam(req.params);
+    const person = await repo.getPerson(id);
+    if (!person) return reply.code(404).send({ error: "not found" });
+    if (person.status !== "failed") return reply.code(409).send({ error: "Only failed profiles can be retried." });
+    void queuePerson(id);
     return { ok: true };
   });
 
-  app.post("/api/dates/run", async (req) => {
+  app.post("/api/dates/run", async (req, reply) => {
     const force = (req.query as { force?: string }).force === "1";
     return { scheduled: await runRound(force) };
   });
