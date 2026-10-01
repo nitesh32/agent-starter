@@ -52,13 +52,26 @@ function datingPanel(s: DatingSummary): string {
     </div></section>`;
 }
 
-export function homePage(people: any[], summary: DatingSummary): string {
+/** The people grid (or its empty state): rendered by the page and re-fetched as a fragment for live updates. */
+export function peopleBlock(people: any[]): string {
+  if (!people.length) return emptyState("No one here yet", "Add a LinkedIn and Instagram above to create the first agent.");
   const cards = people.map((p) => `
     <li><a class="card h-full transition-colors hover:border-primary" href="/person/${p.id}" data-person="${p.id}"><section class="grid gap-3">
       <div class="flex items-center gap-3">${avatar(p)}<div class="min-w-0 grow"><h3 class="truncate font-medium">${esc(p.name)}</h3>${badge(p.status)}</div></div>
       <p class="line-clamp-2 text-sm ${MUTED}">${esc(p.tagline && p.status === "ready" ? p.tagline : "")}</p>
       <p class="text-sm font-medium ${p.status === "failed" ? "text-destructive" : ""}">${esc(personResult(p))}</p>
     </section></a></li>`).join("");
+  return `<ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" id="people">${cards}</ul>`;
+}
+
+/** Everything on the home page that changes while agents work, as one payload for in-place refresh. */
+export const homeFragments = (people: any[], summary: DatingSummary) => ({
+  count: people.length,
+  block: peopleBlock(people),
+  panel: datingPanel(summary),
+});
+
+export function homePage(people: any[], summary: DatingSummary): string {
   return layout("People", `
   <section class="pb-10">
     <h1 class="max-w-[16ch] ${H1}">Agents date so you don't have to</h1>
@@ -70,10 +83,10 @@ export function homePage(people: any[], summary: DatingSummary): string {
     </form>
     <p id="formmsg" class="mt-2 min-h-6 text-sm text-destructive" role="alert"></p>
   </section>
-  ${datingPanel(summary)}
+  <div id="dating-panel">${datingPanel(summary)}</div>
   <section class="border-t py-8">
-    <h2 class="mb-5 text-2xl font-semibold tracking-tight">People <span class="${MUTED} font-normal">${people.length}</span></h2>
-    ${cards ? `<ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" id="people">${cards}</ul>` : emptyState("No one here yet", "Add a LinkedIn and Instagram above to create the first agent.")}
+    <h2 class="mb-5 text-2xl font-semibold tracking-tight">People <span id="people-count" class="${MUTED} font-normal">${people.length}</span></h2>
+    <div id="people-block">${peopleBlock(people)}</div>
   </section>`, "home", 'data-page="home"');
 }
 

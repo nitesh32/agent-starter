@@ -23,6 +23,9 @@ export const topPairs = (limit = 5) =>
     [limit],
   );
 
+export const findByLinkedIn = async (url: string) =>
+  (await query<{ id: number; status: string }>(`select id, status from people where linkedin_url=$1`, [url]))[0];
+
 export const countReadyPeople = async () =>
   Number((await query<{ n: string }>(`select count(*) n from people where status='ready'`))[0].n);
 

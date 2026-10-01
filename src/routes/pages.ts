@@ -3,7 +3,7 @@ import { config } from "../config.js";
 import * as repo from "../repo.js";
 import { datingSummary } from "../dating.js";
 import { notFoundPage } from "../views/ui.js";
-import { aboutPage, datePage, homePage, livePage, personPage, rankingsPage } from "../views/pages.js";
+import { aboutPage, datePage, homeFragments, homePage, livePage, personPage, rankingsPage } from "../views/pages.js";
 
 const html = (reply: { type: (t: string) => any }, body: string) => reply.type("text/html; charset=utf-8").send(body);
 const idParam = (v: unknown) => Number((v as { id: string }).id);
@@ -12,6 +12,11 @@ export async function pageRoutes(app: FastifyInstance) {
   app.get("/", async (_req, reply) => {
     const [people, summary] = await Promise.all([repo.listPeople(), datingSummary()]);
     return html(reply, homePage(people, summary));
+  });
+
+  app.get("/fragments/home", async () => {
+    const [people, summary] = await Promise.all([repo.listPeople(), datingSummary()]);
+    return homeFragments(people, summary);
   });
 
   app.get("/person/:id", async (req, reply) => {

@@ -34,9 +34,9 @@
     el.querySelector(".bubble").innerHTML += '<div class="typing"><i></i><i></i><i></i></div>';
     return el;
   }
-  const toast = (category, title, description) => {
+  const toast = (category, title, description, action) => {
     const t = document.getElementById("toaster");
-    if (t && t.toast) t.toast({ category, title, description });
+    if (t && t.toast) t.toast({ category, title, description, action, duration: action ? 6000 : undefined });
   };
   function setBusy(btn, busy, label) {
     btn.disabled = busy;
@@ -73,6 +73,31 @@
     home() {
       const form = $("#add");
       const msg = $("#formmsg");
+
+      // Re-fetch the parts of the page that change while agents work, and swap them in place.
+      let timer;
+      const refreshHome = () => {
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+          try {
+            const r = await fetch("/fragments/home");
+            if (!r.ok) return;
+            const d = await r.json();
+            $("#people-block").innerHTML = d.block;
+            $("#people-count").textContent = d.count;
+            $("#dating-panel").innerHTML = d.panel;
+            wireRunButton();
+          } catch {}
+        }, 300);
+      };
+      const highlight = (id) => {
+        const card = $(`[data-person="${id}"]`);
+        if (!card) return;
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        card.style.outline = "2px solid var(--primary)";
+        setTimeout(() => (card.style.outline = ""), 2200);
+      };
+
       form.onsubmit = async (e) => {
         e.preventDefault();
         const btn = form.querySelector("button");
@@ -87,24 +112,32 @@
         }
         setBusy(btn, true, "Creating agent…");
         try {
-          const { id } = await api("/api/people", { body: JSON.stringify(Object.fromEntries(new FormData(form))) });
-          toast("success", "Agent created", "Reading their profiles now.");
-          setTimeout(() => (location.href = `/person/${id}`), 700);
+          const { id, existing } = await api("/api/people", { body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+          form.reset();
+          await (async () => {
+            const r = await fetch("/fragments/home");
+            if (r.ok) {
+              const d = await r.json();
+              $("#people-block").innerHTML = d.block;
+              $("#people-count").textContent = d.count;
+              $("#dating-panel").innerHTML = d.panel;
+              wireRunButton();
+            }
+          })();
+          highlight(id);
+          const open = { label: "Open profile", href: `/person/${id}` };
+          if (existing) toast("info", "Already added", "Highlighted in the list.", open);
+          else toast("success", "Agent added", "Reading their profiles now.", open);
+          setBusy(btn, false, "Create agent");
         } catch (err) {
           msg.textContent = err.message;
-          toast("error", "Couldn't create the agent", err.message);
+          toast("error", "Couldn't add the agent", err.message);
           setBusy(btn, false, "Create agent");
         }
       };
-      let t;
+
       stream((e) => {
-        if (e.type === "date_finished") { clearTimeout(t); t = setTimeout(() => location.reload(), 800); return; }
-        if (e.type !== "person") return;
-        const card = $(`[data-person="${e.id}"]`);
-        if (!card) return location.reload();
-        const b = $("[data-status]", card);
-        if (b) { b.className = `badge status s-${e.status}`; b.textContent = e.status[0].toUpperCase() + e.status.slice(1); }
-        if (e.status === "ready" || e.status === "failed") { clearTimeout(t); t = setTimeout(() => location.reload(), 500); }
+        if (e.type === "person" || e.type === "date_finished") refreshHome();
       });
     },
 
