@@ -29,6 +29,12 @@ export const chips = (xs: string[], tone: "" | "bad" | "good" = ""): string =>
     ? `<ul class="flex flex-wrap gap-2">${xs.map((x) => `<li class="badge chip ${tone}" data-variant="secondary">${esc(x)}</li>`).join("")}</ul>`
     : '<p class="text-sm text-muted-foreground">None noted.</p>';
 
+/** Sentence-length items (concerns, flags, questions): a wrapping list with a tone marker, never pills. */
+export const notes = (xs: string[], tone: "" | "bad" | "good" = ""): string =>
+  xs.length
+    ? `<ul class="notes ${tone}">${xs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`
+    : '<p class="text-sm text-muted-foreground">None noted.</p>';
+
 /** Labelled Basecoat progress bar (0..max). */
 export const bar = (label: string, value: number, max = 10): string => {
   const v = Math.round(value * 10) / 10;

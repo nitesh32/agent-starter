@@ -1,6 +1,6 @@
 import { beamDiagram, type BeamNode } from "./beams.js";
 import { icon } from "./icons.js";
-import { alertError, avatar, badge, bar, bubble, button, chips, emptyState, esc, field, layout, skeleton, type Who } from "./ui.js";
+import { alertError, avatar, badge, bar, bubble, button, chips, notes, emptyState, esc, field, layout, skeleton, type Who } from "./ui.js";
 
 // ---------- small composition helpers ----------
 const H1 = "text-3xl font-semibold leading-tight tracking-tight md:text-5xl";
@@ -85,13 +85,13 @@ export function personPage(p: any, dates: any[], ranking: any[]): string {
       col("Values", chips(a.values)),
       col("Career", item(`${car.field} · ${car.stage}`, car.ambition_notes)),
       col("Looking for", `<p>${esc(a.looking_for)}</p>`),
-      col("Green flags and dealbreakers", chips(a.green_flags, "good") + chips(a.dealbreakers, "bad")),
+      col("Green flags", notes(a.green_flags, "good")) + col("Dealbreakers", notes(a.dealbreakers, "bad")),
     )}`;
   const evidenceTab = cols(
     col("Needs", a.needs.map((n: any) => `<div class="grid gap-1 py-3 not-first:border-t"><b class="font-medium">${esc(n.need)}</b><span class="${MUTED}">${esc(n.why)}</span>${evidence(n.evidence)}</div>`).join("") || `<p class="${MUTED}">None found.</p>`),
     col("Hobbies and interests", [...a.hobbies, ...a.interests].map((h: any) => `<div class="grid gap-1 py-3 not-first:border-t"><b class="font-medium">${esc(h.name)}</b>${evidence(h.evidence)}</div>`).join("") || `<p class="${MUTED}">None found.</p>`),
     col("How they talk", `<p class="text-sm ${MUTED}">${esc(a.voice.tone)} · ${esc(a.voice.vocabulary)} · emoji: ${esc(a.voice.emoji_use)}</p>${a.voice.sample_lines.map((l: string) => `<p class="ev"><q>${esc(l)}</q></p>`).join("")}`),
-    col("Ideal first date", `<p>${esc(a.ideal_first_date)}</p>${a.data_gaps.length ? `<h4 class="mt-2 text-sm font-medium">What the agent couldn't tell</h4>${chips(a.data_gaps)}` : ""}`),
+    col("Ideal first date", `<p>${esc(a.ideal_first_date)}</p>${a.data_gaps.length ? `<h4 class="mt-2 text-sm font-medium">What the agent couldn't tell</h4>${notes(a.data_gaps)}` : ""}`),
   );
   const fits = `<h3 class="mb-3 font-medium">Best fits</h3>${ranking.length
     ? table(["#", "Partner", ["Why", "hidden md:table-cell"], "Score"], ranking.map((r, i) => rankRow(r, i + 1)), "Best fits ranked by match score")
@@ -124,13 +124,13 @@ function debrief(p: Who, v: any): string {
     <div><span class="badge" data-variant="${v.want_second_date ? "default" : "destructive"}">${v.want_second_date ? "Wants a second date" : "Passes"}</span></div>
     ${Object.keys(DIM).map((k) => bar(DIM[k], v.scores?.[k] ?? 0)).join("")}
     <p class="ev"><b class="block text-xs uppercase tracking-wide text-foreground">Best moment</b><q>${esc(v.best_moment)}</q></p>
-    ${v.concerns?.length ? `<h4 class="text-sm font-medium">Concerns</h4>${chips(v.concerns, "bad")}` : ""}
+    ${v.concerns?.length ? `<h4 class="text-sm font-medium">Concerns</h4>${notes(v.concerns, "bad")}` : ""}
     <p>${esc(v.why)}</p></section></div>`;
 }
 
 const intentBlock = (p: Who, i: any) => i ? `<details class="border-t py-1"><summary class="flex min-h-11 cursor-pointer items-center font-medium">${esc(p.name)}'s private intent</summary>
-  <div class="grid gap-3 pb-3"><h4 class="text-sm font-medium">Wants to find out</h4>${chips(i.find_out)}<h4 class="text-sm font-medium">Questions</h4>${i.questions.map((q: string) => `<p class="ev">${esc(q)}</p>`).join("")}
-  <h4 class="text-sm font-medium">Dealbreakers</h4>${chips(i.dealbreakers, "bad")}</div></details>` : "";
+  <div class="grid gap-3 pb-3"><h4 class="text-sm font-medium">Wants to find out</h4>${notes(i.find_out)}<h4 class="text-sm font-medium">Questions</h4>${i.questions.map((q: string) => `<p class="ev">${esc(q)}</p>`).join("")}
+  <h4 class="text-sm font-medium">Dealbreakers</h4>${notes(i.dealbreakers, "bad")}</div></details>` : "";
 
 export function datePage(d: any, a: Who, b: Who, turns: any[]): string {
   const live = d.status !== "done" && d.status !== "failed";

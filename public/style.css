@@ -60,6 +60,16 @@ body { background: var(--background); color: var(--foreground); font-family: Gei
 .badge.chip.good { background: color-mix(in oklch, var(--success) 12%, var(--card)); color: var(--success); }
 .badge.chip.bad { background: color-mix(in oklch, var(--destructive) 10%, var(--card)); color: var(--destructive); }
 
+/* Layout safety: grid/flex children may shrink below their content width; badges may wrap. */
+.grid > *, .card > *, .card section > * { min-width: 0; }
+.badge { white-space: normal; height: auto; text-align: left; }
+.badge.status { white-space: nowrap; }
+.notes { display: grid; gap: 8px; font-size: 14px; }
+.notes li { position: relative; padding-left: 14px; overflow-wrap: anywhere; }
+.notes li::before { content: ""; position: absolute; left: 0; top: 0.5em; width: 6px; height: 6px; border-radius: 50%; background: var(--muted-foreground); }
+.notes.bad li::before { background: var(--destructive); }
+.notes.good li::before { background: var(--success); }
+
 /* Evidence quotes */
 .ev { margin: 4px 0 0; padding-left: 12px; border-left: 2px solid var(--border); font-size: 14px; color: var(--muted-foreground); }
 .ev .badge { margin-right: 8px; }
