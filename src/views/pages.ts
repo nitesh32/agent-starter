@@ -24,7 +24,7 @@ const scoreCell = (n: number | null) => `<span class="text-lg font-semibold tabu
 function personResult(p: any): string {
   if (p.status === "failed") return "Couldn't read this profile. Open it to see why and try again.";
   if (p.status !== "ready") return p.tagline || "The agent is still getting to know them.";
-  return p.dates_done ? `${p.dates_done} ${p.dates_done === 1 ? "date" : "dates"} · best fit ${Math.round(p.best_score)}` : "No dates yet";
+  return p.dates_done ? `${p.dates_done} ${p.dates_done === 1 ? "date" : "dates"} · top match score ${Math.round(p.best_score)}` : "No dates yet";
 }
 
 /** One place that says what "dating" means, what is waiting, and what the button will do. */
