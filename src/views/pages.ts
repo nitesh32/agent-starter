@@ -1,6 +1,7 @@
 import { beamDiagram, type BeamNode } from "./beams.js";
 import { icon } from "./icons.js";
-import { alertError, avatar, badge, bar, bubble, button, chips, notes, emptyState, esc, field, layout, skeleton, type Who } from "./ui.js";
+import type { DatingSummary } from "../dating.js";
+import { alertError, avatar, badge, bar, bubble, button, chips, fitLabel, fitBadge, fitMeter, notes, emptyState, esc, field, layout, skeleton, type Who } from "./ui.js";
 
 // ---------- small composition helpers ----------
 const H1 = "text-3xl font-semibold leading-tight tracking-tight md:text-5xl";
@@ -20,11 +21,43 @@ const table = (head: (string | [string, string])[], rows: string[], caption: str
 const scoreCell = (n: number | null) => `<span class="text-lg font-semibold tabular-nums">${n != null ? Math.round(n) : "–"}</span>`;
 
 // ---------------- home ----------------
-export function homePage(people: any[]): string {
+function personResult(p: any): string {
+  if (p.status === "failed") return "Couldn't read this profile. Open it to see why and try again.";
+  if (p.status !== "ready") return p.tagline || "The agent is still getting to know them.";
+  return p.dates_done ? `${p.dates_done} ${p.dates_done === 1 ? "date" : "dates"} · best fit ${Math.round(p.best_score)}` : "No dates yet";
+}
+
+/** One place that says what "dating" means, what is waiting, and what the button will do. */
+function datingPanel(s: DatingSummary): string {
+  const stat = (n: number, label: string) => `<div><div class="text-2xl font-semibold tabular-nums">${n}</div><div class="text-sm ${MUTED}">${label}</div></div>`;
+  let action: string, hint: string;
+  if (s.ready < 2) {
+    action = button("Start dates", { id: "run-round", ic: "heart", disabled: true });
+    hint = "Add at least two people and wait until both show Ready.";
+  } else if (s.running) {
+    action = button("Watch dates live", { href: "/live", ic: "radio" });
+    hint = `${s.running} ${s.running === 1 ? "date is" : "dates are"} happening now.`;
+  } else if (s.pending === 0) {
+    action = button("See rankings", { href: "/rankings", variant: "outline", ic: "trophy" });
+    hint = "Every planned pair has already been on a date. Add someone new to start more.";
+  } else {
+    action = button(`Start ${s.pending} ${s.pending === 1 ? "date" : "dates"}`, { id: "run-round", ic: "heart" });
+    hint = "Each pair of agents goes on a first date, then both score how it went.";
+  }
+  return `<section class="border-t py-8" id="dating"><h2 class="text-2xl font-semibold tracking-tight">Dates</h2>
+    <p class="mt-1 max-w-[60ch] ${MUTED}">Agents are paired by how much their people have in common. Each pair chats for a few turns on a made-up first date, then both agents privately score the fit.</p>
+    <div class="mt-5 flex flex-wrap items-end justify-between gap-6">
+      <div class="flex gap-8">${stat(s.ready, "people ready")}${stat(s.done, "dates done")}${stat(s.mutual, "mutual matches")}${stat(s.pending, "waiting to start")}</div>
+      <div class="grid justify-items-start gap-2 sm:justify-items-end">${action}<p class="max-w-[40ch] text-sm ${MUTED} sm:text-right">${hint}</p></div>
+    </div></section>`;
+}
+
+export function homePage(people: any[], summary: DatingSummary): string {
   const cards = people.map((p) => `
     <li><a class="card h-full transition-colors hover:border-primary" href="/person/${p.id}" data-person="${p.id}"><section class="grid gap-3">
       <div class="flex items-center gap-3">${avatar(p)}<div class="min-w-0 grow"><h3 class="truncate font-medium">${esc(p.name)}</h3>${badge(p.status)}</div></div>
-      <p class="line-clamp-2 text-sm ${MUTED}">${esc(p.tagline || (p.status === "failed" ? p.error : "The agent is still getting to know them."))}</p>
+      <p class="line-clamp-2 text-sm ${MUTED}">${esc(p.tagline && p.status === "ready" ? p.tagline : "")}</p>
+      <p class="text-sm font-medium ${p.status === "failed" ? "text-destructive" : ""}">${esc(personResult(p))}</p>
     </section></a></li>`).join("");
   return layout("People", `
   <section class="pb-10">
@@ -37,9 +70,9 @@ export function homePage(people: any[]): string {
     </form>
     <p id="formmsg" class="mt-2 min-h-6 text-sm text-destructive" role="alert"></p>
   </section>
+  ${datingPanel(summary)}
   <section class="border-t py-8">
-    <div class="mb-5 flex flex-wrap items-center justify-between gap-3"><h2 class="text-2xl font-semibold tracking-tight">People <span class="${MUTED} font-normal">${people.length}</span></h2>
-      <div class="flex flex-wrap gap-2">${button("Run dating round", { id: "run-round", ic: "heart" })}${button("Rankings", { href: "/rankings", variant: "outline", ic: "trophy" })}${button("Watch live", { href: "/live", variant: "outline", ic: "radio" })}</div></div>
+    <h2 class="mb-5 text-2xl font-semibold tracking-tight">People <span class="${MUTED} font-normal">${people.length}</span></h2>
     ${cards ? `<ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" id="people">${cards}</ul>` : emptyState("No one here yet", "Add a LinkedIn and Instagram above to create the first agent.")}
   </section>`, "home", 'data-page="home"');
 }
@@ -62,7 +95,7 @@ const tabs = (id: string, items: [string, string][]) => `
     ${items.map(([, body], i) => `<div role="tabpanel" id="${id}-panel-${i}" tabindex="-1" aria-labelledby="${id}-tab-${i}" class="pt-6"${i === 0 ? "" : " hidden"}>${body}</div>`).join("")}
   </div>`;
 
-export function personPage(p: any, dates: any[], ranking: any[]): string {
+export function personPage(p: any, dates: any[], ranking: any[], others = 0): string {
   const head = `<header class="flex flex-wrap items-center gap-6 pb-8">${avatar(p, "xl")}<div class="min-w-0 grow">
       <h1 class="${H1}">${esc(p.name)}</h1>
       <div class="mt-2 flex flex-wrap items-center gap-3">${badge(p.status)}<span class="${MUTED}">${esc(p.linkedin?.headline || "")}</span></div>
@@ -93,26 +126,27 @@ export function personPage(p: any, dates: any[], ranking: any[]): string {
     col("How they talk", `<p class="text-sm ${MUTED}">${esc(a.voice.tone)} · ${esc(a.voice.vocabulary)} · emoji: ${esc(a.voice.emoji_use)}</p>${a.voice.sample_lines.map((l: string) => `<p class="ev"><q>${esc(l)}</q></p>`).join("")}`),
     col("Ideal first date", `<p>${esc(a.ideal_first_date)}</p>${a.data_gaps.length ? `<h4 class="mt-2 text-sm font-medium">What the agent couldn't tell</h4>${notes(a.data_gaps)}` : ""}`),
   );
-  const fits = `<h3 class="mb-3 font-medium">Best fits</h3>${ranking.length
-    ? table(["#", "Partner", ["Why", "hidden md:table-cell"], "Score"], ranking.map((r, i) => rankRow(r, i + 1)), "Best fits ranked by match score")
-    : emptyState("No finished dates yet", "Run a dating round to see who fits best.", button("Run dating round", { id: "run-round", ic: "heart" }), "heart")}
-    <h3 class="mb-3 mt-8 font-medium">All dates</h3>${dates.length
-    ? table(["Partner", ["Date", "hidden md:table-cell"], "Status", "Score"], dates.map(dateRow), "All dates for this person")
-    : emptyState("No dates yet", "Dates appear here once this agent is paired with someone.", "", "users")}`;
+  const first = esc(String(p.name).split(" ")[0]);
+  const unfinished = dates.filter((d) => d.status !== "done");
+  const undated = Math.max(0, others - dates.length);
+  const fits = ranking.length
+    ? `<div class="grid max-w-3xl gap-1 pb-5"><h3 class="font-medium">Dates ranked by match score</h3>
+        <p class="text-sm ${MUTED}">${first} has been on ${ranking.length} ${ranking.length === 1 ? "date" : "dates"}${others ? ` out of ${others} other ${others === 1 ? "person" : "people"} on AgentDate` : ""}. ${undated ? "People who haven't dated yet aren't ranked." : ""}</p></div>
+      <div class="mb-6 max-w-xl">${fitMeter()}</div>
+      ${table(["#", "Partner", "Fit", ["Why, according to " + first + "'s agent", "hidden md:table-cell"], "Score"], ranking.map((r, i) => rankRow(r, i + 1)), "Dates ranked by match score")}
+      <p class="mt-3 text-sm ${MUTED}">The score (0 to 100) combines what both agents thought of the date, so it's the same from either side. <b class="font-medium text-foreground">Mutual match</b> means both agents want a second date. <a class="underline" href="/about#score">How scoring works</a></p>`
+    : emptyState("No finished dates yet", dates.length ? "Dates are still running. Check the live floor." : "Start the dates from the People page and the results will show up here.", dates.length ? button("Watch live", { href: "/live", ic: "radio" }) : button("Go to People", { href: "/#dating", ic: "users" }), "heart");
+  const fitsTab = `${fits}${unfinished.length ? `<h3 class="mb-3 mt-10 font-medium">Not finished</h3>${table(["Partner", "Status"], unfinished.map((d) => `<tr><td><a class="flex min-w-0 items-center gap-3 hover:underline" href="/date/${d.id}">${avatar({ id: d.partner_id, name: d.partner_name, has_photo: d.partner_has_photo }, "sm")}<span class="truncate font-medium">${esc(d.partner_name)}</span></a></td><td>${badge(d.status)}</td></tr>`), "Dates that are not finished")}` : ""}`;
 
-  return layout(p.name, `${head}${tabs("person-tabs", [["Overview", overview], ["Evidence", evidenceTab], ["Fits and dates", fits]])}`, "", attrs, `${p.name}: ${a.headline_tagline}`);
+  return layout(p.name, `${head}${tabs("person-tabs", [["Overview", overview], ["Evidence", evidenceTab], ["Dates and fit", fitsTab]])}`, "", attrs, `${p.name}: ${a.headline_tagline}`);
 }
 
-const rankRow = (r: any, n: number, withWhy = true) => `<tr>
+const rankRow = (r: any, n: number, compact = false) => `<tr>
   <td class="w-10 text-muted-foreground tabular-nums">${n}</td>
   <td><a class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 hover:underline" href="/date/${r.date_id}">${avatar({ id: r.partner_id, name: r.partner_name, has_photo: r.partner_has_photo }, "sm")}<span class="truncate font-medium">${esc(r.partner_name)}</span>${r.mutual ? '<span class="badge" data-variant="outline">Mutual match</span>' : ""}</a></td>
-  ${withWhy ? `<td class="hidden max-w-md text-sm text-muted-foreground md:table-cell"><span class="line-clamp-2">${esc(r.my_verdict?.why || r.partner_tagline || "")}</span></td>` : ""}
+  <td>${fitBadge(r.match_score)}</td>
+  ${compact ? "" : `<td class="hidden max-w-md whitespace-normal text-sm text-muted-foreground md:table-cell"><span class="line-clamp-2">${esc(r.my_verdict?.why || r.partner_tagline || "")}</span></td>`}
   <td class="text-right">${scoreCell(r.match_score)}</td></tr>`;
-
-const dateRow = (d: any) => `<tr>
-  <td><a class="flex min-w-0 items-center gap-3 hover:underline" href="/date/${d.id}">${avatar({ id: d.partner_id, name: d.partner_name, has_photo: d.partner_has_photo }, "sm")}<span class="truncate font-medium">${esc(d.partner_name)}</span></a></td>
-  <td class="hidden max-w-md text-sm text-muted-foreground md:table-cell"><span class="line-clamp-2">${esc(d.setting?.activity || "Planning the date…")}</span></td>
-  <td>${badge(d.status)}</td><td class="text-right">${scoreCell(d.match_score)}</td></tr>`;
 
 // ---------------- date ----------------
 const DIM: Record<string, string> = { values: "Values", lifestyle: "Lifestyle", interests: "Interests", communication: "Communication", life_goals: "Life goals", chemistry: "Chemistry" };
@@ -121,7 +155,7 @@ function debrief(p: Who, v: any): string {
   const head = `<div class="flex items-center gap-3">${avatar(p, "sm")}<h3 class="grow font-medium">${esc(p.name)}'s agent</h3>`;
   if (!v) return `<div class="card"><section class="grid gap-4">${head}</div><p class="${MUTED}">Debrief pending.</p>${skeleton(3)}</section></div>`;
   return `<div class="card"><section class="grid gap-4">${head}<span class="text-xl font-semibold tabular-nums">${v.overall}/10</span></div>
-    <div><span class="badge" data-variant="${v.want_second_date ? "default" : "destructive"}">${v.want_second_date ? "Wants a second date" : "Passes"}</span></div>
+    <div><span class="badge"${v.want_second_date ? "" : ' data-variant="destructive"'}>${v.want_second_date ? "Wants a second date" : "Passes"}</span></div>
     ${Object.keys(DIM).map((k) => bar(DIM[k], v.scores?.[k] ?? 0)).join("")}
     <p class="ev"><b class="block text-xs uppercase tracking-wide text-foreground">Best moment</b><q>${esc(v.best_moment)}</q></p>
     ${v.concerns?.length ? `<h4 class="text-sm font-medium">Concerns</h4>${notes(v.concerns, "bad")}` : ""}
@@ -150,7 +184,8 @@ export function datePage(d: any, a: Who, b: Who, turns: any[]): string {
     </section>
     <aside class="border-t py-8 max-lg:order-first" aria-label="Result">
       ${d.status === "done" ? `<div class="mb-6 grid gap-2"><div class="text-5xl font-semibold leading-none tracking-tight tabular-nums">${Math.round(d.match_score)}</div>
-        <p>match score${d.mutual ? ' <span class="badge ml-1" data-variant="outline">Mutual match</span>' : ""}</p>
+        <p>match score · ${fitLabel(d.match_score)}${d.mutual ? ' <span class="badge ml-1" data-variant="outline">Mutual match</span>' : ""}</p>
+        ${fitMeter(d.match_score)}
         <p class="text-sm ${MUTED}">50% geometric mean of both overall scores, 30% dimension average, 20% pre-date compatibility, +5 if both want a second date.</p></div>` : `<p class="mb-6 ${MUTED}">${live ? "The match score appears when both agents finish their debriefs." : ""}</p>`}
       <h3 class="mb-1 font-medium">Private intents</h3>${intentBlock(a, d.intent_a)}${intentBlock(b, d.intent_b)}
     </aside>
@@ -178,21 +213,33 @@ export function livePage(dates: any[], people: Record<number, { name: string; ph
 }
 
 // ---------------- rankings ----------------
-export function rankingsPage(rows: { person: any; top: any[] }[]): string {
+const pairRow = (r: any, n: number) => `<li><a class="flex min-h-14 items-center gap-4 py-3 hover:bg-muted/50" href="/date/${r.id}">
+  <span class="w-6 text-muted-foreground tabular-nums">${n}</span>
+  <span class="flex shrink-0 -space-x-2">${avatar({ id: r.a_id, name: r.a_name, has_photo: r.a_has_photo })}${avatar({ id: r.b_id, name: r.b_name, has_photo: r.b_has_photo })}</span>
+  <span class="min-w-0 grow"><span class="block truncate font-medium">${esc(r.a_name)} and ${esc(r.b_name)}</span>
+    <span class="flex flex-wrap items-center gap-2 text-sm ${MUTED}">${fitBadge(r.match_score)}${r.mutual ? '<span class="badge" data-variant="outline">Mutual match</span>' : "<span>One-sided</span>"}</span></span>
+  ${scoreCell(r.match_score)}</a></li>`;
+
+export function rankingsPage(pairs: any[], rows: { person: any; top: any[] }[]): string {
   const cards = rows.map(({ person: p, top }) => `
-    <li class="card"><header><a class="flex min-h-11 items-center gap-3" href="/person/${p.id}">${avatar(p)}<div class="min-w-0"><h2 class="truncate">${esc(p.name)}</h2><p class="line-clamp-1">${esc(p.tagline || "")}</p></div></a></header>
-      <section>${top.length ? table(["#", "Partner", "Score"], top.map((r, i) => rankRow(r, i + 1, false)), `Top matches for ${p.name}`) : `<p class="text-sm ${MUTED}">No finished dates yet.</p>`}</section></li>`).join("");
-  return layout("Rankings", `<header class="mb-8"><h1 class="${H1}">Best fits</h1><p class="mt-2 ${MUTED}">Each person's top matches, scored by both agents after the date.</p></header>
-    ${cards ? `<ul class="grid gap-4 lg:grid-cols-2">${cards}</ul>` : emptyState("No people yet", "Add someone on the People page to start.", button("Add a person", { href: "/" }))}`, "rankings");
+    <li class="card"><header><a class="flex min-h-11 items-center gap-3" href="/person/${p.id}">${avatar(p)}<div class="min-w-0"><h2 class="truncate">${esc(p.name)}</h2><p>${p.dates_done} ${p.dates_done === 1 ? "date" : "dates"}</p></div></a></header>
+      <section>${top.length ? table(["#", "Partner", "Fit", "Score"], top.map((r, i) => rankRow(r, i + 1, true)), `Top matches for ${p.name}`) : `<p class="text-sm ${MUTED}">No finished dates yet.</p>`}</section>
+      ${p.dates_done > top.length ? `<footer><a class="text-sm underline" href="/person/${p.id}">See all ${p.dates_done} dates</a></footer>` : ""}</li>`).join("");
+  return layout("Rankings", `<header class="mb-8"><h1 class="${H1}">Rankings</h1>
+    <p class="mt-2 max-w-[62ch] ${MUTED}">Every score belongs to a pair. It combines what both agents thought of their date, so it reads the same from either side. Only people who have been on a date are ranked.</p>
+    <div class="mt-5 max-w-xl">${fitMeter()}</div></header>
+    ${pairs.length ? `${section("Top matches overall", `<ol class="divide-y">${pairs.map((r, i) => pairRow(r, i + 1)).join("")}</ol>`)}
+      ${section("Each person's best dates", `<ul class="grid gap-4 lg:grid-cols-2">${cards}</ul>`)}`
+      : emptyState("No finished dates yet", "Rankings appear once agents have been on their first dates.", button("Go to People", { href: "/#dating", ic: "users" }), "trophy")}`, "rankings");
 }
 
 // ---------------- about ----------------
 const FLOW_NODES: BeamNode[] = [
-  { id: "li", label: "LinkedIn", sub: "work and skills", cx: 90, cy: 85, shape: "chip", w: 136, h: 48, tone: "var(--muted-foreground)" },
-  { id: "ig", label: "Instagram", sub: "posts and tone", cx: 90, cy: 215, shape: "chip", w: 136, h: 48, tone: "var(--muted-foreground)" },
-  { id: "read", label: "Reads them", sub: "analysis agent", cx: 280, cy: 130, shape: "hub", icon: "search" },
-  { id: "date", label: "Dates", sub: "agent with agent", cx: 460, cy: 130, shape: "hub", icon: "heart" },
-  { id: "rank", label: "Best fits", sub: "your ranking", cx: 640, cy: 130, shape: "hub", icon: "trophy" },
+  { id: "li", label: "LinkedIn", sub: "work and skills", cx: 90, cy: 50, shape: "dot", icon: "linkedin" },
+  { id: "ig", label: "Instagram", sub: "posts and tone", cx: 90, cy: 170, shape: "dot", icon: "instagram" },
+  { id: "read", label: "Reads them", sub: "analysis agent", cx: 280, cy: 110, shape: "hub", icon: "search" },
+  { id: "date", label: "Dates", sub: "agent with agent", cx: 460, cy: 110, shape: "hub", icon: "heart" },
+  { id: "rank", label: "Best fits", sub: "your ranking", cx: 640, cy: 110, shape: "hub", icon: "trophy" },
 ];
 const FLOW_EDGES = [{ from: "li", to: "read" }, { from: "ig", to: "read" }, { from: "read", to: "date" }, { from: "date", to: "rank" }];
 
@@ -207,10 +254,10 @@ const STEPS: [string, string][] = [
 export function aboutPage(models: { analysis: string; date: string; fallback: string }): string {
   return layout("How it works", `
   <header class="mb-8"><h1 class="${H1}">How it works</h1><p class="mt-2 ${MUTED}">Two profiles in, a ranked list of best fits out.</p></header>
-  <div class="card"><section>${beamDiagram(FLOW_NODES, FLOW_EDGES, { w: 720, h: 250 }, "LinkedIn and Instagram feed an analysis agent, then agents date each other, then a ranking is produced")}</section></div>
+  <div class="card max-w-2xl"><section>${beamDiagram(FLOW_NODES, FLOW_EDGES, { w: 720, h: 225 }, "LinkedIn and Instagram feed an analysis agent, then agents date each other, then a ranking is produced")}</section></div>
   <ol class="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-5">${STEPS.map(([t, d], i) => `<li class="grid content-start gap-3"><span class="inline-flex size-8 items-center justify-center rounded-full bg-muted text-sm font-semibold text-primary">${i + 1}</span><div><h3 class="font-medium">${t}</h3><p class="mt-1 text-sm ${MUTED}">${d}</p></div></li>`).join("")}</ol>
   ${section("Under the hood", cols(
     col("Models, via OpenRouter", item("Reading people", models.analysis) + item("Running dates", models.date) + item("Backup", models.fallback)),
-    col("The match score", `<p>Mostly how both agents rated the date, plus how well their dimensions line up, with a small bonus if both want a second date. It is an AI opinion, not a fact.</p><p class="text-sm ${MUTED}">Scraping runs on Apify. Private Instagram accounts are skipped.</p>`),
+    col("The match score", `<div id="score"></div><p>Mostly how both agents rated the date, plus how well their dimensions line up, with a small bonus if both want a second date. It is an AI opinion, not a fact.</p><div class="my-3">${fitMeter()}</div><p class="text-sm"><b class="font-medium">Mutual match</b> means both agents want a second date.</p><p class="text-sm ${MUTED}">Scraping runs on Apify. Private Instagram accounts are skipped.</p>`),
   ))}`, "about");
 }

@@ -226,3 +226,20 @@ export async function resumeInterrupted() {
   const pairs = rows.flatMap((r) => (byId.has(r.a_id) && byId.has(r.b_id) ? [{ a: byId.get(r.a_id)!, b: byId.get(r.b_id)!, pre: r.pre_score }] : []));
   await runPairs(pairs, true);
 }
+
+export interface DatingSummary { ready: number; done: number; mutual: number; running: number; pending: number }
+
+/** What a dating round would do right now, so the UI can say it plainly. */
+export async function datingSummary(): Promise<DatingSummary> {
+  const people = (await loadReady()) as unknown as Person[];
+  const rows = await query<{ a_id: number; b_id: number; status: string; mutual: boolean }>(`select a_id, b_id, status, mutual from dates`);
+  const doneKeys = new Set(rows.filter((r) => r.status === "done").map((r) => `${r.a_id}-${r.b_id}`));
+  const pending = planPairs(people).filter(({ a, b }) => !doneKeys.has(`${a.id}-${b.id}`)).length;
+  return {
+    ready: people.length,
+    done: doneKeys.size,
+    mutual: rows.filter((r) => r.status === "done" && r.mutual).length,
+    running: rows.filter((r) => ["planning", "dating", "debrief"].includes(r.status)).length,
+    pending,
+  };
+}

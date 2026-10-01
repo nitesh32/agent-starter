@@ -9,24 +9,20 @@ export interface BeamNode {
   sub?: string;
   cx: number;
   cy: number;
-  /** "chip" = rounded rectangle, "hub" = circle with a glyph. */
-  shape: "chip" | "hub";
-  icon?: IconName;
-  /** Chip width/height (ignored for hubs). */
-  w?: number;
-  h?: number;
-  /** CSS colour (use a token, e.g. "var(--primary)") for the dot on chips. */
-  tone?: string;
+  /** Both are circles with a Lucide icon: "dot" is small (sources), "hub" is larger (steps). */
+  shape: "dot" | "hub";
+  icon: IconName;
 }
 export interface BeamEdge { from: string; to: string; dur?: number; begin?: number }
 
-const BEAM_LEN = 46;
-const HUB_R = 30;
+const BEAM_LEN = 30;
+const RADIUS = { dot: 22, hub: 30 } as const;
+const ICON = { dot: 18, hub: 24 } as const;
 const ANIM = `keyTimes="0;.65;1" calcMode="spline" keySplines="0.16 1 0.3 1;0 0 1 1" repeatCount="indefinite"`;
 
 interface Pt { x: number; y: number }
-const out = (n: BeamNode): Pt => ({ x: n.cx + (n.shape === "hub" ? HUB_R : (n.w ?? 120) / 2), y: n.cy });
-const into = (n: BeamNode): Pt => ({ x: n.cx - (n.shape === "hub" ? HUB_R : (n.w ?? 120) / 2), y: n.cy });
+const out = (n: BeamNode): Pt => ({ x: n.cx + RADIUS[n.shape], y: n.cy });
+const into = (n: BeamNode): Pt => ({ x: n.cx - RADIUS[n.shape], y: n.cy });
 
 const curve = (a: Pt, b: Pt) => {
   const mx = (a.x + b.x) / 2;
@@ -47,17 +43,11 @@ function gradient(id: string, a: Pt, b: Pt, dur: number, begin: number): string 
 }
 
 function node(n: BeamNode): string {
-  const label = `<text x="${n.cx}" y="${n.cy + (n.sub ? -1 : 4)}" text-anchor="middle" class="bn-label">${esc(n.label)}</text>`;
-  const sub = n.sub ? `<text x="${n.cx}" y="${n.cy + 12}" text-anchor="middle" class="bn-sub">${esc(n.sub)}</text>` : "";
-  if (n.shape === "hub") {
-    return `<g><circle cx="${n.cx}" cy="${n.cy}" r="${HUB_R}" class="bn-box"/>
-      <g class="bn-icon">${iconAt(n.icon ?? "heart", n.cx - 12, n.cy - 12, 24)}</g>
-      <text x="${n.cx}" y="${n.cy + HUB_R + 16}" text-anchor="middle" class="bn-label">${esc(n.label)}</text>
-      ${n.sub ? `<text x="${n.cx}" y="${n.cy + HUB_R + 29}" text-anchor="middle" class="bn-sub">${esc(n.sub)}</text>` : ""}</g>`;
-  }
-  const w = n.w ?? 120, h = n.h ?? 40;
-  return `<g><rect x="${n.cx - w / 2}" y="${n.cy - h / 2}" width="${w}" height="${h}" rx="8" class="bn-box"/>
-    ${n.tone ? `<circle cx="${n.cx - w / 2 + 14}" cy="${n.cy}" r="3.6" style="fill:${n.tone}"/>` : ""}${label}${sub}</g>`;
+  const r = RADIUS[n.shape], size = ICON[n.shape];
+  return `<g><circle cx="${n.cx}" cy="${n.cy}" r="${r}" class="bn-box"/>
+    <g class="bn-icon">${iconAt(n.icon, n.cx - size / 2, n.cy - size / 2, size)}</g>
+    <text x="${n.cx}" y="${n.cy + r + 16}" text-anchor="middle" class="bn-label">${esc(n.label)}</text>
+    ${n.sub ? `<text x="${n.cx}" y="${n.cy + r + 29}" text-anchor="middle" class="bn-sub">${esc(n.sub)}</text>` : ""}</g>`;
 }
 
 export function beamDiagram(nodes: BeamNode[], edges: BeamEdge[], size = { w: 720, h: 300 }, label = "Diagram"): string {

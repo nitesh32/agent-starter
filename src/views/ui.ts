@@ -24,6 +24,32 @@ const LABELS: Record<string, string> = {
 export const badge = (status: string): string =>
   `<span class="badge status s-${esc(status)}" data-status>${LABELS[status] ?? esc(status)}</span>`;
 
+/** Single source of truth for score bands: labels, badges, the meter and the About copy all read this. */
+export const FIT_BANDS = [
+  { key: "weak", label: "Weak fit", from: 0, to: 55 },
+  { key: "possible", label: "Possible fit", from: 55, to: 75 },
+  { key: "strong", label: "Strong fit", from: 75, to: 100 },
+] as const;
+
+const bandOf = (score: number) => FIT_BANDS.find((b) => score < b.to) ?? FIT_BANDS[2];
+
+/** Plain-language reading of a 0-100 match score. */
+export const fitLabel = (score: number | null | undefined): string => (score == null ? "Pending" : bandOf(score).label);
+export const fitBadge = (score: number | null | undefined): string => {
+  const variant = score == null ? "outline" : { weak: "outline", possible: "secondary", strong: "" }[bandOf(score).key];
+  return `<span class="badge"${variant ? ` data-variant="${variant}"` : ""}>${fitLabel(score)}</span>`;
+};
+
+/** Scale of what each score range means; with a score, a marker shows where this one lands. */
+export const fitMeter = (score?: number | null): string => {
+  const has = score != null;
+  const pct = has ? Math.max(0, Math.min(100, score!)) : 0;
+  const summary = FIT_BANDS.map((b) => `${b.label} ${b.from} to ${b.to === 100 ? 100 : b.to - 1}`).join(", ");
+  return `<div class="fitmeter" role="img" aria-label="${has ? `Match score ${Math.round(pct)} out of 100, ${fitLabel(score)}. ` : ""}Scale: ${summary}">
+    <div class="fm-track">${FIT_BANDS.map((b) => `<span class="fm-seg ${b.key}" style="width:${b.to - b.from}%"></span>`).join("")}${has ? `<span class="fm-marker" style="left:${pct}%"><b>${Math.round(pct)}</b></span>` : ""}</div>
+    <div class="fm-labels">${FIT_BANDS.map((b) => `<span style="width:${b.to - b.from}%"><b>${b.label.replace(" fit", "")}</b><small>${b.from}–${b.to === 100 ? 100 : b.to - 1}</small></span>`).join("")}</div></div>`;
+};
+
 export const chips = (xs: string[], tone: "" | "bad" | "good" = ""): string =>
   xs.length
     ? `<ul class="flex flex-wrap gap-2">${xs.map((x) => `<li class="badge chip ${tone}" data-variant="secondary">${esc(x)}</li>`).join("")}</ul>`

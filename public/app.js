@@ -98,6 +98,7 @@
       };
       let t;
       stream((e) => {
+        if (e.type === "date_finished") { clearTimeout(t); t = setTimeout(() => location.reload(), 800); return; }
         if (e.type !== "person") return;
         const card = $(`[data-person="${e.id}"]`);
         if (!card) return location.reload();

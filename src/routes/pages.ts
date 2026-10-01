@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { config } from "../config.js";
 import * as repo from "../repo.js";
+import { datingSummary } from "../dating.js";
 import { notFoundPage } from "../views/ui.js";
 import { aboutPage, datePage, homePage, livePage, personPage, rankingsPage } from "../views/pages.js";
 
@@ -8,13 +9,16 @@ const html = (reply: { type: (t: string) => any }, body: string) => reply.type("
 const idParam = (v: unknown) => Number((v as { id: string }).id);
 
 export async function pageRoutes(app: FastifyInstance) {
-  app.get("/", async (_req, reply) => html(reply, homePage(await repo.listPeople())));
+  app.get("/", async (_req, reply) => {
+    const [people, summary] = await Promise.all([repo.listPeople(), datingSummary()]);
+    return html(reply, homePage(people, summary));
+  });
 
   app.get("/person/:id", async (req, reply) => {
     const id = idParam(req.params);
-    const [person, dates, ranking] = await Promise.all([repo.getPerson(id), repo.datesOf(id), repo.rankingOf(id)]);
+    const [person, dates, ranking, readyCount] = await Promise.all([repo.getPerson(id), repo.datesOf(id), repo.rankingOf(id), repo.countReadyPeople()]);
     if (!person) return reply.code(404).type("text/html").send(notFoundPage("person"));
-    return html(reply, personPage(person, dates, ranking));
+    return html(reply, personPage(person, dates, ranking, readyCount - 1));
   });
 
   app.get("/date/:id", async (req, reply) => {
@@ -36,9 +40,9 @@ export async function pageRoutes(app: FastifyInstance) {
   });
 
   app.get("/rankings", async (_req, reply) => {
-    const people = await repo.listPeople();
-    const rows = await Promise.all(people.map(async (person: any) => ({ person, top: await repo.rankingOf(person.id, 3) })));
-    return html(reply, rankingsPage(rows));
+    const people = (await repo.listPeople()).filter((p: any) => p.status === "ready");
+    const [pairs, ...tops] = await Promise.all([repo.topPairs(5), ...people.map((p: any) => repo.rankingOf(p.id, 3))]);
+    return html(reply, rankingsPage(pairs, people.map((person: any, i: number) => ({ person, top: tops[i] }))));
   });
 
   app.get("/about", async (_req, reply) => html(reply, aboutPage(config.models)));

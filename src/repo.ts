@@ -5,9 +5,26 @@ import { query } from "./db.js";
 const PUBLIC = `id, name, linkedin_url, instagram_url, ig_username, status, progress, error, tags, analysis, linkedin, instagram,
   (photo_type is not null) as has_photo, analysis->>'headline_tagline' as tagline`;
 
-/** Slim card data for list pages: avoids shipping every person's full analysis JSON over the wire. */
+/** Slim card data for list pages (no full analysis JSON), plus each person's date results. */
 export const listPeople = () =>
-  query(`select id, name, status, error, (photo_type is not null) as has_photo, analysis->>'headline_tagline' as tagline from people order by id desc`);
+  query(`select p.id, p.name, p.status, p.error, (p.photo_type is not null) as has_photo, p.analysis->>'headline_tagline' as tagline,
+      (select count(*)::int from dates d where d.status='done' and (d.a_id=p.id or d.b_id=p.id)) as dates_done,
+      (select max(d.match_score) from dates d where d.status='done' and (d.a_id=p.id or d.b_id=p.id)) as best_score
+     from people p order by p.id desc`);
+
+/** The best pairs overall (a date belongs to two people, so list it once). */
+export const topPairs = (limit = 5) =>
+  query(
+    `select d.id, d.match_score, d.mutual,
+            a.id as a_id, a.name as a_name, (a.photo_type is not null) as a_has_photo,
+            b.id as b_id, b.name as b_name, (b.photo_type is not null) as b_has_photo
+       from dates d join people a on a.id=d.a_id join people b on b.id=d.b_id
+      where d.status='done' order by d.match_score desc limit $1`,
+    [limit],
+  );
+
+export const countReadyPeople = async () =>
+  Number((await query<{ n: string }>(`select count(*) n from people where status='ready'`))[0].n);
 
 export const listPeopleFull = () => query(`select ${PUBLIC} from people order by id desc`);
 
