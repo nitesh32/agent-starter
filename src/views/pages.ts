@@ -234,30 +234,61 @@ export function rankingsPage(pairs: any[], rows: { person: any; top: any[] }[]):
 }
 
 // ---------------- about ----------------
+// Two people in -> one persona agent each -> the date harness -> ranking.
 const FLOW_NODES: BeamNode[] = [
-  { id: "li", label: "LinkedIn", sub: "work and skills", cx: 90, cy: 50, shape: "dot", icon: "linkedin" },
-  { id: "ig", label: "Instagram", sub: "posts and tone", cx: 90, cy: 170, shape: "dot", icon: "instagram" },
-  { id: "read", label: "Reads them", sub: "analysis agent", cx: 280, cy: 110, shape: "hub", icon: "search" },
-  { id: "date", label: "Dates", sub: "agent with agent", cx: 460, cy: 110, shape: "hub", icon: "heart" },
-  { id: "rank", label: "Best fits", sub: "your ranking", cx: 640, cy: 110, shape: "hub", icon: "trophy" },
+  { id: "a-li", label: "LinkedIn", sub: "Person A", cx: 70, cy: 30, shape: "dot", icon: "linkedin" },
+  { id: "a-ig", label: "Instagram", sub: "Person A", cx: 70, cy: 118, shape: "dot", icon: "instagram" },
+  { id: "b-li", label: "LinkedIn", sub: "Person B", cx: 70, cy: 208, shape: "dot", icon: "linkedin" },
+  { id: "b-ig", label: "Instagram", sub: "Person B", cx: 70, cy: 296, shape: "dot", icon: "instagram" },
+  { id: "agent-a", label: "Agent A", sub: "reads Person A", cx: 250, cy: 74, shape: "hub", icon: "bot" },
+  { id: "agent-b", label: "Agent B", sub: "reads Person B", cx: 250, cy: 252, shape: "hub", icon: "bot" },
+  { id: "harness", label: "Date harness", sub: "agents date each other", cx: 450, cy: 163, shape: "hub", icon: "heart" },
+  { id: "rank", label: "Ranking", sub: "best fits for both", cx: 660, cy: 163, shape: "hub", icon: "trophy" },
 ];
-const FLOW_EDGES = [{ from: "li", to: "read" }, { from: "ig", to: "read" }, { from: "read", to: "date" }, { from: "date", to: "rank" }];
+const FLOW_EDGES = [
+  { from: "a-li", to: "agent-a" }, { from: "a-ig", to: "agent-a" },
+  { from: "b-li", to: "agent-b" }, { from: "b-ig", to: "agent-b" },
+  { from: "agent-a", to: "harness" }, { from: "agent-b", to: "harness" },
+  { from: "harness", to: "rank" },
+];
 
-const STEPS: [string, string][] = [
-  ["We read two public pages", "Only a person's LinkedIn and public Instagram. Nothing else is searched."],
-  ["An agent works out who they are", "It writes down what they need, enjoy and value, and how they talk, with a quote as proof for each claim."],
-  ["Agents go on dates", "Each person's agent chats with another agent, speaking as that person, on a first date."],
-  ["Each agent gives honest feedback", "Afterwards both agents score the fit and say whether they'd meet again."],
-  ["You get a ranking", "Everyone's dates are sorted by score, so you see who fits best and why."],
+const CONCEPTS = ["Persona agents", "Agentic harness", "Multi-agent simulation", "LLM-as-judge", "Grounded generation", "Structured outputs"];
+
+interface Stage { title: string; what: string; term: string; how: string }
+const stages = (m: { analysis: string; date: string }): Stage[] => [
+  { title: "Ingest", what: "Paste a LinkedIn URL and a public Instagram for each person.", term: "Parallel scraping", how: "Apify actors fetch both profiles at once. Private Instagram accounts are rejected. Raw and normalized JSON are stored in Postgres." },
+  { title: "Build the persona", what: "A reader agent writes down each person's needs, hobbies, interests, values, personality and how they talk.", term: "Grounded generation", how: `${m.analysis} reads the profile text and recent post images. The output is a structured object validated with Zod, and every claim must quote its source.` },
+  { title: "Plan the date", what: "Each agent privately decides what it wants to find out, and a first-date setting is picked from shared interests.", term: "Planning step", how: "A cheap pre-score on shared tags, values and lifestyle decides which pairs are worth spending model calls on." },
+  { title: "Run the date", what: "The two agents talk for 8 turns, each speaking as its person, asking questions and reacting to the other.", term: "Multi-agent simulation", how: `The harness loops over turns. Each turn gets the persona, voice, private intent and transcript so far (${m.date}). Turns are saved and streamed live over SSE.` },
+  { title: "Debrief and rank", what: "After the date each agent privately scores the fit and says whether it wants a second date. Scores become rankings.", term: "LLM-as-judge", how: "A six-dimension rubric per agent is blended with the pre-score into a 0 to 100 match score. Both agents wanting a second date makes it a mutual match." },
+];
+
+const GUARDRAILS = [
+  "Only two sources per person: their LinkedIn and public Instagram. No web search, nothing else.",
+  "Every claim in a profile must quote the source it came from.",
+  "Agents must not invent facts about the person they represent.",
+  "Scores are AI opinions from a simulation, not facts about compatibility.",
 ];
 
 export function aboutPage(models: { analysis: string; date: string; fallback: string }): string {
   return layout("How it works", `
-  <header class="mb-8"><h1 class="${H1}">How it works</h1><p class="mt-2 ${MUTED}">Two profiles in, a ranked list of best fits out.</p></header>
-  <div class="card max-w-2xl"><section>${beamDiagram(FLOW_NODES, FLOW_EDGES, { w: 720, h: 225 }, "LinkedIn and Instagram feed an analysis agent, then agents date each other, then a ranking is produced")}</section></div>
-  <ol class="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-5">${STEPS.map(([t, d], i) => `<li class="grid content-start gap-3"><span class="inline-flex size-8 items-center justify-center rounded-full bg-muted text-sm font-semibold text-primary">${i + 1}</span><div><h3 class="font-medium">${t}</h3><p class="mt-1 text-sm ${MUTED}">${d}</p></div></li>`).join("")}</ol>
+  <header class="mb-8"><h1 class="${H1}">How AgentDate works</h1>
+    <p class="mt-3 max-w-[64ch] ${MUTED}">Paste two people's LinkedIn and public Instagram. Each person gets an AI agent that reads them, dates the other person's agent in a multi-agent simulation, and ranks who fits best.</p>
+    <ul class="mt-4 flex flex-wrap gap-2">${CONCEPTS.map((c) => `<li class="badge" data-variant="secondary">${c}</li>`).join("")}</ul></header>
+  <div class="card max-w-3xl"><section class="diagram-scroll" tabindex="0" aria-label="Flow diagram (scrollable)">${beamDiagram(FLOW_NODES, FLOW_EDGES, { w: 760, h: 365 }, "Two people, each with a LinkedIn and an Instagram, feed one persona agent each. The two agents meet in the date harness, and the results become a ranking.")}</section></div>
+  <p class="mt-3 max-w-3xl text-sm ${MUTED}">Two people in. One persona agent each. The agents meet inside the date harness, and the scores become rankings.</p>
+
+  <section class="mt-12">
+    <h2 class="mb-2 text-2xl font-semibold tracking-tight">Step by step</h2>
+    <ol>${stages(models).map((st, i) => `<li class="grid gap-3 border-t py-6 md:grid-cols-2 md:gap-12">
+      <div class="flex gap-4"><span class="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-primary">${i + 1}</span>
+        <div><h3 class="font-medium">${st.title}</h3><p class="mt-1">${st.what}</p></div></div>
+      <div class="grid content-start gap-2 md:pt-1"><span class="badge w-fit" data-variant="outline">${st.term}</span><p class="text-sm ${MUTED}">${st.how}</p></div></li>`).join("")}</ol>
+  </section>
+
+  ${section("Guardrails", notes(GUARDRAILS, "good"))}
   ${section("Under the hood", cols(
-    col("Models, via OpenRouter", item("Reading people", models.analysis) + item("Running dates", models.date) + item("Backup", models.fallback)),
-    col("The match score", `<div id="score"></div><p>Mostly how both agents rated the date, plus how well their dimensions line up, with a small bonus if both want a second date. It is an AI opinion, not a fact.</p><div class="my-3">${fitMeter()}</div><p class="text-sm"><b class="font-medium">Mutual match</b> means both agents want a second date.</p><p class="text-sm ${MUTED}">Scraping runs on Apify. Private Instagram accounts are skipped.</p>`),
+    col("Models, via OpenRouter", item("Reading people", models.analysis) + item("Running dates", models.date) + item("Backup if a call fails", models.fallback) + `<p class="text-sm ${MUTED}">Calls retry with backoff, then fall back to the backup model. Outputs are validated before they are saved.</p>`),
+    col("The match score", `<div id="score"></div><p>Mostly how both agents rated the date, plus how well their dimensions line up, with a small bonus if both want a second date.</p><div class="my-3">${fitMeter()}</div><p class="text-sm"><b class="font-medium">Mutual match</b> means both agents want a second date.</p>`),
   ))}`, "about");
 }

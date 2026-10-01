@@ -112,6 +112,8 @@ body { background: var(--background); color: var(--foreground); font-family: Gei
 
 /* Diagram */
 .beams { width: 100%; height: auto; display: block; }
+.diagram-scroll { overflow-x: auto; }
+.diagram-scroll .beams { min-width: 600px; }
 .bn-wire { fill: none; stroke: var(--border); stroke-width: 1.5; }
 .bn-beam { fill: none; stroke-width: 2; stroke-linecap: round; }
 .bn-box { fill: var(--card); stroke: var(--border); stroke-width: 1.5; }
