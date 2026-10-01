@@ -103,7 +103,13 @@ export function personPage(p: any, dates: any[], ranking: any[], others = 0): st
     </div></header>`;
   const attrs = `data-page="person" data-id="${p.id}" data-status="${esc(p.status)}"`;
   if (p.status === "failed") {
-    return layout(p.name, `${head}${alertError("We couldn't build this agent", p.error ?? "Unknown error", button("Try again", { id: "retry", ic: "refresh" }))}`, "", attrs);
+    return layout(p.name, `${head}${alertError("We couldn't build this agent", p.error ?? "Unknown error")}
+      <form id="relink" class="mt-8 grid max-w-4xl items-end gap-3 md:grid-cols-[1fr_1fr_auto]" novalidate>
+        ${field("rl-li", "LinkedIn URL", `<input class="input" id="rl-li" type="text" name="linkedin_url" value="${esc(p.linkedin_url)}" autocomplete="off" required>`)}
+        ${field("rl-ig", "Instagram URL or handle", `<input class="input" id="rl-ig" type="text" name="instagram_url" value="${esc(p.ig_username ? "@" + p.ig_username : "")}" autocomplete="off" required>`)}
+        <button class="btn" type="submit">${icon("refresh")}Fix and try again</button>
+      </form>
+      <p id="relink-msg" class="mt-2 min-h-6 text-sm text-destructive" role="alert"></p>`, "", attrs);
   }
   const a = p.analysis;
   if (!a) return layout(p.name, `${head}${section("Building this agent", steps(p) + skeleton(4))}`, "", attrs);

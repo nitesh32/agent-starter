@@ -36,6 +36,21 @@ export async function createPerson(linkedinInput: string, instagramInput: string
   return rows[0].id;
 }
 
+/** Replace a person's links (e.g. after a typo) and run the pipeline again. */
+export async function updateLinks(id: number, linkedinInput: string, instagramInput: string): Promise<void> {
+  const linkedin = normalizeLinkedInUrl(linkedinInput);
+  const username = normalizeIgUsername(instagramInput);
+  const clash = await query(`select id, name from people where linkedin_url=$1 and id<>$2`, [linkedin, id]);
+  if (clash[0]) throw new Error(`That LinkedIn profile is already on AgentDate (${clash[0].name}).`);
+  const rows = await query(
+    `update people set linkedin_url=$2, instagram_url=$3, ig_username=$4, name=$5, status='queued', error=null, progress='{}'::jsonb where id=$1 returning id`,
+    [id, linkedin, `https://www.instagram.com/${username}/`, username, `@${username}`],
+  );
+  if (!rows[0]) throw new Error("Person not found.");
+  publish({ type: "person", id, status: "queued", name: `@${username}` });
+  void queuePerson(id);
+}
+
 /** Scrape → analyze → date existing ready people. Never throws. */
 export function queuePerson(id: number): Promise<void> {
   return personQueue(() => processPerson(id));

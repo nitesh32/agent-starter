@@ -53,15 +53,17 @@ export function normalizeIgUsername(input: string): string {
     s = new URL(/^https?:/i.test(s) ? s : `https://${s}`).pathname.split("/").filter(Boolean)[0] ?? "";
   }
   s = s.split(/[/?#]/)[0].replace(/^@/, "");
-  if (!/^[A-Za-z0-9._]{1,30}$/.test(s)) throw new Error(`Invalid Instagram username: "${input}"`);
+  if (!/^[A-Za-z0-9._]{1,30}$/.test(s)) throw new Error("Enter an Instagram @handle or profile link, like @username or instagram.com/username.");
   return s.toLowerCase();
 }
 
 export function normalizeLinkedInUrl(input: string): string {
   const s = input.trim();
-  if (/linkedin\.com\/in\//i.test(s)) return (/^https?:/i.test(s) ? s : `https://${s}`).split(/[?#]/)[0].replace(/\/$/, "");
-  if (/^[\w%-]+$/.test(s)) return `https://www.linkedin.com/in/${s}`;
-  throw new Error(`Invalid LinkedIn profile URL: "${input}"`);
+  const m = s.match(/linkedin\.com\/in\/([^/?#\s]+)/i);
+  if (!m || m[1].length < 3) {
+    throw new Error("Paste the full LinkedIn profile link, like linkedin.com/in/username.");
+  }
+  return `https://www.linkedin.com/in/${m[1]}`;
 }
 
 function normIg(r: any): IgProfile {
@@ -133,44 +135,45 @@ export async function scrapePerson(
   };
   onProgress({ ...progress });
 
-  const li = runActor(config.linkedinActor, {
-    urls: [linkedinUrl],
-    profileScraperMode: "Profile details no email ($4 per 1k)",
-  }).then(
-    (items) => {
-      const raw = items[0];
-      if (!raw || (raw as any).error) throw new Error("LinkedIn profile not found or empty (is the URL public?)");
-      const norm = normLinkedIn(raw);
-      if (!norm.name && !norm.headline) throw new Error("LinkedIn profile returned no usable data");
-      set("linkedin", "done");
-      return { raw, norm };
-    },
-    (e) => {
-      set("linkedin", "failed");
-      throw new Error(`LinkedIn scrape failed: ${e.message}`);
-    },
-  );
+  const fail = (k: keyof Progress, message: string): never => {
+    set(k, "failed");
+    throw new Error(message);
+  };
 
-  const ig = runActor(config.igActor, { usernames: [igUsername] }).then(
-    (items) => {
-      const raw = items[0];
-      if (!raw || !(raw as any).username) throw new Error("Instagram profile not found or empty");
-      const norm = normIg(raw);
-      if (norm.isPrivate) throw new Error("Instagram profile is private — only public profiles are supported");
-      set("instagram", "done");
-      return { raw, norm };
-    },
-    (e) => {
-      set("instagram", "failed");
-      throw new Error(`Instagram scrape failed: ${e.message}`);
-    },
-  );
+  const li = (async () => {
+    let items: unknown[];
+    try {
+      items = await runActor(config.linkedinActor, { urls: [linkedinUrl], profileScraperMode: "Profile details no email ($4 per 1k)" });
+    } catch (e) {
+      return fail("linkedin", `We couldn't reach LinkedIn right now (${(e as Error).message}). Try again in a minute.`);
+    }
+    const raw: any = items[0];
+    const norm = raw && !raw.error ? normLinkedIn(raw) : null;
+    if (!norm || (!norm.name && !norm.headline)) {
+      return fail("linkedin", "We couldn't find that LinkedIn profile. Check the link and make sure the profile is public.");
+    }
+    set("linkedin", "done");
+    return { raw, norm };
+  })();
+
+  const ig = (async () => {
+    let items: unknown[];
+    try {
+      items = await runActor(config.igActor, { usernames: [igUsername] });
+    } catch (e) {
+      return fail("instagram", `We couldn't reach Instagram right now (${(e as Error).message}). Try again in a minute.`);
+    }
+    const raw: any = items[0];
+    if (!raw?.username) return fail("instagram", `We couldn't find the Instagram profile @${igUsername}. Check the handle.`);
+    const norm = normIg(raw);
+    if (norm.isPrivate) return fail("instagram", `@${igUsername} is a private Instagram account. Only public profiles can be used.`);
+    set("instagram", "done");
+    return { raw, norm };
+  })();
 
   const [l, i] = await Promise.allSettled([li, ig]);
   if (l.status === "rejected" || i.status === "rejected") {
-    const msgs = [l, i].filter((r) => r.status === "rejected").map((r) => (r as PromiseRejectedResult).reason.message);
-    if (i.status === "rejected" && /private/i.test(i.reason.message)) set("instagram", "failed");
-    throw new Error(msgs.join("; "));
+    throw new Error([l, i].filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => r.reason.message).join(" "));
   }
   return { linkedin: l.value, instagram: i.value };
 }

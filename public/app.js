@@ -110,6 +110,24 @@
 
     person() {
       const { id, status } = document.body.dataset;
+      const relink = $("#relink");
+      if (relink) {
+        relink.onsubmit = async (e) => {
+          e.preventDefault();
+          const msg = $("#relink-msg");
+          const btn = relink.querySelector("button");
+          msg.textContent = "";
+          setBusy(btn, true, "Checking…");
+          try {
+            await api(`/api/people/${id}/links`, { body: JSON.stringify(Object.fromEntries(new FormData(relink))) });
+            toast("success", "Trying again", "Reading the corrected profiles now.");
+            setTimeout(() => location.reload(), 600);
+          } catch (err) {
+            msg.textContent = err.message;
+            setBusy(btn, false, "Fix and try again");
+          }
+        };
+      }
       const retry = $("#retry");
       if (retry) retry.onclick = async () => { await api(`/api/people/${id}/retry`); location.reload(); };
       let t;
